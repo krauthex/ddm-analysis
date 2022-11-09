@@ -157,6 +157,7 @@ if __name__ == "__main__":
                 data_source=src,
                 lags=lags,
                 image_structure_function=dqt,
+                azimuthal_average=azimuthal_avg,
                 metadata=metadata,
                 notes=notes_template.format(chunk=i, normalized=True, windowed=False),
             )
