@@ -4,10 +4,15 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from dfmtoolbox._dfm_python import (
+    azimuthal_average,
+    distance_array,
+    reconstruct_full_spectrum,
+)
 from dfmtoolbox.io import read_data
 from scipy.optimize import curve_fit
 
@@ -17,6 +22,7 @@ class AnalysisBlob:
     """Class for bundling analysis data with additional information."""
 
     data_source: Path
+    rfft2: np.ndarray
     lags: np.ndarray
     image_structure_function: np.ndarray
     azimuthal_average: Optional[np.ndarray] = None
@@ -50,6 +56,32 @@ def general_exp(
     np.ndarray
         The computed exponential.
     """
+
+
+def static_estimate_A_B(rfft2: np.ndarray) -> Tuple[np.ndarray, float]:
+    """Estimate the values for A(q) and B from an average of the power spectra of ImageSet FFT2s.
+
+    The values for A(q) and B can be used to determine the shape of the ISF, since
+
+        D(q, dt) = A(q)[1 - ISF(q, dt)] + B
+
+    with D(q, dt) being the image structure function. The value of B is taken as the average of the
+    10 last values of two times the average power spectrum, and the sum of A and B is given by:
+
+        A + B = 2 * <|FFT2(I)|^2>
+    """
+
+    power_spec = np.abs(rfft2) ** 2  # numpy understands complex numbers
+    power_spec = np.array([reconstruct_full_spectrum(im) for im in power_spec])
+    power_spec = power_spec.mean(axis=0)
+    dist = distance_array(power_spec.shape)
+    a_plus_b = azimuthal_average(power_spec, dist)
+    a_plus_b *= 2
+
+    B = a_plus_b[-10:].mean()
+    A = a_plus_b - B
+
+    return A, B
 
 
 def from_u_to_q(u: np.ndarray, pars: Dict[str, Any]) -> np.ndarray:
@@ -119,16 +151,38 @@ def analyse_single(src: Path, plots: Path) -> None:
     # get representative dt values:
     test_lags = np.linspace(1, len(lags) - 1, num=5, dtype=np.int64)
 
+    # representative u/q values (linspaced)
+    test_wv_idc = np.linspace(
+        0, len(u) - 1, num=5, dtype=np.int64
+    )  # test indices for u and q
+    test_u = u[test_wv_idc]  # get some test u values
+    test_q = q[test_wv_idc]
+
+    # plotting azimuthal average
     fig, ax = plt.subplots(figsize=(6, 6))
     for testlag in test_lags:
         ax.plot(q, azimuthal_avg[testlag], label=r"$\Delta t={}$".format(testlag))
-        ax.set_xlabel(r"Wavevectors $q [{}^{{-1}}]$".format(unit))
-        ax.set_ylabel("Azimuthal average [a.u.]")
-        ax.set_title(f"Azimuthal averages for {binary_file_name}")
-        ax.legend()
-        ax.grid()
-        ax.set_yscale("log")
+    ax.set_xlabel(r"Wavevectors $q\ [{}^{{-1}}]$".format(unit))
+    ax.set_ylabel("Azimuthal average [a.u.]")
+    ax.set_title(f"Azimuthal avg for {binary_file_name} | {blob.notes}", fontsize=9)
+    ax.legend()
+    ax.grid()
+    ax.set_yscale("log")
     fig.savefig(plots / f"az-avg-{binary_file_name}.png", dpi=150)
+    plt.close(fig)  # cleanup
+
+    # calculating A, B, plotting
+    A, B = static_estimate_A_B(blob.rfft2)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.plot(q, A, label=r"$A(q)$")
+    ax.hlines(B, q[0], q[-1], linestyle="--", colors="k", label=r"$B={:.2f}$".format(B))
+    ax.set_xlabel(r"Wavevectors $q\ [{}^{{-1}}]$".format(unit))
+    ax.set_ylabel(r"$A(q),\ B$ [a.u.]")
+    ax.set_title(f"$A(q),\ B$ for {binary_file_name} | {blob.notes}", fontsize=9)
+    ax.legend()
+    ax.grid()
+    ax.set_yscale("log")
+    fig.savefig(plots / f"static_AB-{binary_file_name}.png", dpi=150)
 
 
 # default p0 values for curve_fit

@@ -21,6 +21,7 @@ class AnalysisBlob:
     """Class for bundling analysis data with additional information."""
 
     data_source: Path
+    rfft2: np.ndarray
     lags: np.ndarray
     image_structure_function: np.ndarray
     azimuthal_average: Optional[np.ndarray] = None
@@ -148,13 +149,14 @@ if __name__ == "__main__":
                 data = data[:, :square_dim, :square_dim]
 
             print("::: Performing analysis now ...")
-            azimuthal_avg, dqt = run(data, lags, keep_full_structure=True)
+            rfft2, azimuthal_avg, dqt = run(data, lags, keep_full_structure=True)
 
             print(f"::: Analysis took {perf_counter() - chunk_calc_time:.2f} s")
 
             print("::: Creating data structure ... ")
             blob = AnalysisBlob(
                 data_source=src,
+                rfft2=rfft2,
                 lags=lags,
                 image_structure_function=dqt,
                 azimuthal_average=azimuthal_avg,
@@ -163,7 +165,7 @@ if __name__ == "__main__":
             )
 
             print("::: Writing datastructure to binary file ... ")
-            store_data(blob, path=datastore, name=f"analysis-blob-chunk-{i:03d}")
+            store_data(blob, path=datastore, name=f"chunk-{i:03d}")
         print(
             f"\n:: Overall processing took {perf_counter() - total_time_start:.2f} s."
         )
