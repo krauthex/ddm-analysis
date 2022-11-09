@@ -2,6 +2,7 @@
 
 import argparse
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple
@@ -14,6 +15,7 @@ from dfmtoolbox._dfm_python import (
     reconstruct_full_spectrum,
 )
 from dfmtoolbox.io import read_data
+from matplotlib.colors import TABLEAU_COLORS
 from scipy.optimize import curve_fit
 
 
@@ -32,15 +34,15 @@ class AnalysisBlob:
 
 
 def general_exp(
-    x: np.ndarray, amp: float, tau: float, offset: float, beta: float = 1.0
+    t: np.ndarray, tau: float, amp: float = 1.0, offset: float = 0.0, beta: float = 1.0
 ) -> np.ndarray:
     """The general exponential of the shape
 
-        f(x) = amp * exp(-(x/tau)^beta) + offset
+        f(t) = amp * exp(-(t/tau)^beta) + offset
 
     Parameters
     ----------
-    x : np.ndarray
+    t : np.ndarray
         Input data
     amp : float
         The amplitude of the exponential.
@@ -56,6 +58,7 @@ def general_exp(
     np.ndarray
         The computed exponential.
     """
+    return amp * np.exp(-((t / tau) ** beta)) + offset
 
 
 def static_estimate_A_B(rfft2: np.ndarray) -> Tuple[np.ndarray, float]:
@@ -117,7 +120,18 @@ def from_u_to_q(u: np.ndarray, pars: Dict[str, Any]) -> np.ndarray:
     return u * q_min
 
 
+def intermediate_scattering_function(
+    structure_function: np.ndarray, A: np.ndarray, B: float
+) -> np.ndarray:
+    """Return the intermediate scattering function."""
+    A_masked = np.ma.masked_equal(A, 0)  # masking 0 values for A
+
+    return 1 - (structure_function - B) / A_masked
+
+
 def analyse_single(src: Path, plots: Path) -> None:
+
+    colors = list(TABLEAU_COLORS.values())
 
     info_template = (
         "[info] {filename} | shape {shape} | notes {notes} | lag fraction {lag_frac}"
@@ -141,7 +155,7 @@ def analyse_single(src: Path, plots: Path) -> None:
     metadata = blob.metadata
 
     fps = metadata["fps"]
-    pixel_size = metadata["pixel_size"]
+    # pixel_size = metadata["pixel_size"]
     unit = metadata["pixel_size_unit"]
 
     # convert pixel-u-values to q wave vectors
@@ -150,11 +164,12 @@ def analyse_single(src: Path, plots: Path) -> None:
 
     # get representative dt values:
     test_lags = np.linspace(1, len(lags) - 1, num=5, dtype=np.int64)
+    time = lags / fps
 
     # representative u/q values (linspaced)
     test_wv_idc = np.linspace(
-        0, len(u) - 1, num=5, dtype=np.int64
-    )  # test indices for u and q
+        int(len(u) * 0.1), int(len(u) * 0.5), num=5, dtype=np.int64
+    )  # test indices for u and q; use only the first half of q range, rest is very noisy
     test_u = u[test_wv_idc]  # get some test u values
     test_q = q[test_wv_idc]
 
@@ -183,10 +198,43 @@ def analyse_single(src: Path, plots: Path) -> None:
     ax.grid()
     ax.set_yscale("log")
     fig.savefig(plots / f"static_AB-{binary_file_name}.png", dpi=150)
+    plt.close(fig)
+
+    # fitting exponential
+    isf = np.zeros_like(azimuthal_avg)
+    for i, avg in enumerate(azimuthal_avg):
+        isf[i] = intermediate_scattering_function(avg, A, B)
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    for i, tu in enumerate(test_u):
+        ax.plot(
+            time, isf[:, tu], color=colors[i], label="$q = {:.3f}$".format(test_q[i])
+        )
+
+        # popt, pcov = curve_fit(general_exp, time, isf[:, tu], p0=default_p0)
+        popt, pcov = curve_fit(general_exp, time, isf[:, tu], p0=default_p0)
+        ax.plot(
+            time,
+            general_exp(time, *popt),
+            linestyle=":",
+            linewidth=0.8,
+            color=colors[i],
+        )
+        print(popt, np.sqrt(np.diag(pcov)))
+        # print(popt, np.sqrt(pcov))
+
+    ax.set_xlabel(r"Time $t\ [s]$")
+    ax.set_ylabel(r"Intermediate scattering function $f(q, \Delta t)$")
+    ax.set_title(f"ISF for {binary_file_name} | {blob.notes}", fontsize=9)
+    ax.legend()
+    ax.grid()
+    ax.set_xscale("log")
+    fig.savefig(plots / f"isf-{binary_file_name}.png", dpi=150)
+    plt.close(fig)
 
 
 # default p0 values for curve_fit
-default_p0 = [1.0, 1e3, 0.0]  # amplitude, tau, offset
+default_p0 = [1e3, 1.0]  # amplitude, tau; offset is always very close to zero anyway
 
 # argpares setup
 parser = argparse.ArgumentParser()
