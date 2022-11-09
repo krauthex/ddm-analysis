@@ -168,7 +168,7 @@ def analyse_single(src: Path, plots: Path) -> None:
 
     # representative u/q values (linspaced)
     test_wv_idc = np.linspace(
-        int(len(u) * 0.1), int(len(u) * 0.5), num=5, dtype=np.int64
+        int(len(u) * 0.1), int(len(u) * 0.5), num=6, dtype=np.int64
     )  # test indices for u and q; use only the first half of q range, rest is very noisy
     test_u = u[test_wv_idc]  # get some test u values
     test_q = q[test_wv_idc]
@@ -179,7 +179,7 @@ def analyse_single(src: Path, plots: Path) -> None:
         ax.plot(q, azimuthal_avg[testlag], label=r"$\Delta t={}$".format(testlag))
     ax.set_xlabel(r"Wavevectors $q\ [{}^{{-1}}]$".format(unit))
     ax.set_ylabel("Azimuthal average [a.u.]")
-    ax.set_title(f"Azimuthal avg for {binary_file_name} | {blob.notes}", fontsize=9)
+    ax.set_title(f"Azimuthal avg | {binary_file_name} | {blob.notes}", fontsize=9)
     ax.legend()
     ax.grid()
     ax.set_yscale("log")
@@ -193,7 +193,7 @@ def analyse_single(src: Path, plots: Path) -> None:
     ax.hlines(B, q[0], q[-1], linestyle="--", colors="k", label=r"$B={:.2f}$".format(B))
     ax.set_xlabel(r"Wavevectors $q\ [{}^{{-1}}]$".format(unit))
     ax.set_ylabel(r"$A(q),\ B$ [a.u.]")
-    ax.set_title(f"$A(q),\ B$ for {binary_file_name} | {blob.notes}", fontsize=9)
+    ax.set_title(f"$A(q),\ B$ | {binary_file_name} | {blob.notes}", fontsize=9)
     ax.legend()
     ax.grid()
     ax.set_yscale("log")
@@ -225,7 +225,7 @@ def analyse_single(src: Path, plots: Path) -> None:
 
     ax.set_xlabel(r"Time $t\ [s]$")
     ax.set_ylabel(r"Intermediate scattering function $f(q, \Delta t)$")
-    ax.set_title(f"ISF for {binary_file_name} | {blob.notes}", fontsize=9)
+    ax.set_title(f"ISF w/ exp fit | {binary_file_name} | {blob.notes}", fontsize=9)
     ax.legend()
     ax.grid()
     ax.set_xscale("log")
