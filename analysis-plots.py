@@ -163,13 +163,13 @@ def analyse_single(src: Path, plots: Path) -> None:
     q = from_u_to_q(u, metadata)
 
     # get representative dt values:
-    test_lags = np.linspace(1, len(lags) - 1, num=5, dtype=np.int64)
+    test_lags = np.linspace(1, len(lags), num=5, dtype=np.int64, endpoint=False)
     time = lags / fps
 
     # representative u/q values (linspaced)
     idx_range = (int(len(u) * 0.1), int(len(u) * 0.5))
     test_wv_idc = np.linspace(
-        *idx_range, num=6, dtype=np.int64
+        *idx_range, num=6, dtype=np.int64, endpoint=False
     )  # test indices for u and q; use only the first half of q range, rest is very noisy
     test_u = u[test_wv_idc]  # get some test u values
     test_q = q[test_wv_idc]
@@ -203,25 +203,30 @@ def analyse_single(src: Path, plots: Path) -> None:
     fig.savefig(plots / f"static_AB-{binary_file_name}.png", dpi=150)
     plt.close(fig)
 
-    # fitting exponential to all q values within prepared range
-    fit_u = np.arange(*idx_range)
-    fit_params = np.zeros((len(fit_u), len(default_p0)))
-    for fu in fit_u:
-        pass
-
-    # plotting ISF & fitting exponential
+    # calculating ISF
     print("::: Plotting ISF with exponential fit ...")
     isf = np.zeros_like(azimuthal_avg)
     for i, avg in enumerate(azimuthal_avg):
         isf[i] = intermediate_scattering_function(avg, A, B)
 
+    # fitting exponential to all q values within prepared range
+    fit_u = np.arange(*idx_range)
+    fit_q = from_u_to_q(fit_u, metadata)
+    fit_params = {}
+
+    for fu in fit_u:
+        popt, pcov = curve_fit(general_exp, time, isf[:, fu], p0=default_p0)
+        fit_params[fu] = (popt, np.sqrt(np.diag(pcov)))
+
+    # plotting ISF with fits for test u/q values
     fig, ax = plt.subplots(figsize=(6, 6))
     for i, tu in enumerate(test_u):
         ax.plot(
             time, isf[:, tu], color=colors[i], label="$q = {:.3f}$".format(test_q[i])
         )
 
-        popt, pcov = curve_fit(general_exp, time, isf[:, tu], p0=default_p0)
+        # popt, pcov = curve_fit(general_exp, time, isf[:, tu], p0=default_p0)
+        popt, _ = fit_params[tu]
         ax.plot(
             time,
             general_exp(time, *popt),
@@ -239,9 +244,40 @@ def analyse_single(src: Path, plots: Path) -> None:
     fig.savefig(plots / f"isf-{binary_file_name}.png", dpi=150)
     plt.close(fig)
 
+    # plotting fit results
+    print("::: Fit results ...")
+
+    nparameters = len(popt)
+    fig, axes = plt.subplots(nparameters, 1, figsize=(6, 3 * nparameters), sharex=True)
+
+    parameters = np.array(
+        [item[0] for item in fit_params.values()]
+    )  # extracting parameters
+    parameters = parameters.T  # transpose to get parameters as func of q
+    for i in range(nparameters):
+        ax = axes[i]
+        par = parameters[i]
+        ax.plot(fit_q, par, color=colors[i])
+        ax.set_ylabel(fit_parameter_labels[i])
+        ax.grid(which="both")
+        ax.set_xscale("log")
+        if i == 0:  # tau
+            ax.set_yscale("log")
+            ax.set_ylim((500, 1e4))
+    ax.set_xlabel(r"Wavevector $q\ [{}^{{-1}}]$".format(unit))
+    fig.suptitle(f"Fitting parameters | {binary_file_name} | {blob.notes}", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(plots / f"fit-parameters-{binary_file_name}.png", dpi=150)
+
 
 # default p0 values for curve_fit
 default_p0 = [1e3, 1.0]  # amplitude, tau; offset is always very close to zero anyway
+fit_parameter_labels = [
+    r"$\tau(q) [s]$",
+    "amplitude of exponential",
+    "offset",
+    r"$\beta(q)$",
+]
 
 # argpares setup
 parser = argparse.ArgumentParser()
