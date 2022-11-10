@@ -199,6 +199,7 @@ def analyse_single(src: Path, plots: Path) -> None:
     ax.set_title(f"$A(q),\ B$ | {binary_file_name} | {blob.notes}", fontsize=9)
     ax.legend()
     ax.grid()
+    ax.set_ylim((1e-2, 1e6))
     ax.set_yscale("log")
     fig.savefig(plots / f"static_AB-{binary_file_name}.png", dpi=150)
     plt.close(fig)
@@ -264,6 +265,8 @@ def analyse_single(src: Path, plots: Path) -> None:
         if i == 0:  # tau
             ax.set_yscale("log")
             ax.set_ylim((500, 1e4))
+        if i == 1:  # amplitude
+            ax.set_ylim((0.8, 1.3))
     ax.set_xlabel(r"Wavevector $q\ [{}^{{-1}}]$".format(unit))
     fig.suptitle(f"Fitting parameters | {binary_file_name} | {blob.notes}", fontsize=8)
     fig.tight_layout()
@@ -273,7 +276,7 @@ def analyse_single(src: Path, plots: Path) -> None:
 # default p0 values for curve_fit
 default_p0 = [1e3, 1.0]  # amplitude, tau; offset is always very close to zero anyway
 fit_parameter_labels = [
-    r"$\tau(q) [s]$",
+    r"$\tau(q)\ [s]$",
     "amplitude of exponential",
     "offset",
     r"$\beta(q)$",
