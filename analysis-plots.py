@@ -34,7 +34,7 @@ class AnalysisBlob:
 
 
 def general_exp(
-    t: np.ndarray, tau: float, amp: float = 1.0, offset: float = 0.0, beta: float = 1.0
+    t: np.ndarray, tau: float, amp: float = 1.0, beta: float = 1.0
 ) -> np.ndarray:
     """The general exponential of the shape
 
@@ -48,8 +48,6 @@ def general_exp(
         The amplitude of the exponential.
     tau : float
         "half-life" of exponential process.
-    offset : float
-        Offset from zero
     beta : float, optional
         Compressing (< 1.0) or stretching (> 1.0) exponent, by default 1.0
 
@@ -58,7 +56,14 @@ def general_exp(
     np.ndarray
         The computed exponential.
     """
-    return amp * np.exp(-((t / tau) ** beta)) + offset
+    return amp * np.exp(-((t / tau) ** beta))
+
+
+def tau_moment(tau: float, beta: float) -> float:
+    """Calculate the first moment of the stretched exponential function."""
+    from scipy.special import gamma
+
+    return tau / beta * gamma(1 / beta)
 
 
 def static_estimate_A_B(rfft2: np.ndarray) -> Tuple[np.ndarray, float]:
@@ -249,7 +254,9 @@ def analyse_single(src: Path, plots: Path) -> None:
     print("::: Fit results ...")
 
     nparameters = len(popt)
-    fig, axes = plt.subplots(nparameters, 1, figsize=(6, 3 * nparameters), sharex=True)
+    fig, axes = plt.subplots(
+        nparameters, 1, figsize=(6, 2.5 * nparameters), sharex=True
+    )
 
     parameters = np.array(
         [item[0] for item in fit_params.values()]
@@ -258,27 +265,40 @@ def analyse_single(src: Path, plots: Path) -> None:
     for i in range(nparameters):
         ax = axes[i]
         par = parameters[i]
-        ax.plot(fit_q, par, color=colors[i])
+        ax.scatter(fit_q, par, c=colors[i], s=20)
         ax.set_ylabel(fit_parameter_labels[i])
         ax.grid(which="both")
         ax.set_xscale("log")
+        # fit parameter specific settings
         if i == 0:  # tau
             ax.set_yscale("log")
             ax.set_ylim((500, 1e4))
         if i == 1:  # amplitude
-            ax.set_ylim((0.8, 1.3))
+            ax.set_ylim((0.6, 1.3))
+        if i == 2:  # beta
+            ax.set_ylim((0.6, 2))
+            # also plot the first moment of tau in the right axis
+            axes[0].scatter(
+                fit_q,
+                tau_moment(parameters[0], par),
+                c="k",
+                marker="v",
+                label=r"$\langle \tau(q) \rangle$",
+            )
+            axes[0].legend()
+
     ax.set_xlabel(r"Wavevector $q\ [{}^{{-1}}]$".format(unit))
     fig.suptitle(f"Fitting parameters | {binary_file_name} | {blob.notes}", fontsize=8)
     fig.tight_layout()
-    fig.savefig(plots / f"fit-parameters-{binary_file_name}.png", dpi=150)
+    fig.savefig(plots / f"stretched-exp-fit-pars-{binary_file_name}.png", dpi=150)
 
 
 # default p0 values for curve_fit
-default_p0 = [1e3, 1.0]  # amplitude, tau; offset is always very close to zero anyway
+# default_p0 = [1e3, 1.0]  # amplitude, tau; offset is always very close to zero anyway
+default_p0 = [1e3, 1.0, 1.0]
 fit_parameter_labels = [
     r"$\tau(q)\ [s]$",
     "amplitude of exponential",
-    "offset",
     r"$\beta(q)$",
 ]
 
