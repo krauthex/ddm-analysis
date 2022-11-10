@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -134,18 +134,11 @@ def intermediate_scattering_function(
     return 1 - (structure_function - B) / A_masked
 
 
-def analyse_single(src: Path, plots: Path) -> None:
-
-    colors = list(TABLEAU_COLORS.values())
-
+def print_blob_info(blob: AnalysisBlob) -> None:
     info_template = (
         "[info] {filename} | shape {shape} | notes {notes} | lag fraction {lag_frac}"
     )
 
-    binary_file_name = src.name.replace(".pkl", "")  # without file extension
-    print(f":: Destination folder is {plots}")
-    print(":: Reading data ...")
-    blob = read_data(src)
     print(
         info_template.format(
             filename=blob.data_source.name,
@@ -155,9 +148,55 @@ def analyse_single(src: Path, plots: Path) -> None:
         )
     )
 
-    lags = blob.lags
-    azimuthal_avg = blob.azimuthal_average
-    metadata = blob.metadata
+
+def analyse_single(
+    src: Union[Path, List[Path]], plots: Path, ensemble_average: bool = False
+) -> None:
+
+    colors = list(TABLEAU_COLORS.values())
+
+    print(f":: Destination folder is {plots}")
+
+    if ensemble_average and isinstance(src, list):
+        # we average the image structure function over the files given and analyse that
+
+        # assume same file naming for simplicity
+        binary_file_name = src[0].name.replace(".pkl", "")  # without file extension
+
+        ensemble = []
+        print(":: Reading ensemble data ...")
+        for path in src:
+            blob = read_data(path)
+            ensemble.append(blob)
+            print_blob_info(blob)
+
+        # use last blob to extract info that should be the same for all blobs
+        lags = blob.lags
+        metadata = blob.metadata
+        notes = blob.notes
+
+        print(":: Averaging ensemble data ...")
+        # we will compute our own azimuthal average
+        dqt = np.array([blob.image_structure_function for blob in ensemble]).mean(
+            axis=0
+        )
+        rfft2 = np.array([blob.rfft2 for blob in ensemble])
+
+        dqt_dist = distance_array(dqt.shape)
+        azimuthal_avg = np.zeros((len(dqt), metadata["image_size"] // 2))
+        for i in range(len(dqt)):
+            azimuthal_avg[i] = azimuthal_average(dqt[i], dqt_dist)
+
+    else:
+        print(":: Reading data ...")
+        blob = read_data(src)
+        print_blob_info(blob)
+
+        lags = blob.lags
+        metadata = blob.metadata
+        azimuthal_avg = blob.azimuthal_average
+        rfft2 = blob.rfft2
+        notes = blob.notes
 
     fps = metadata["fps"]
     # pixel_size = metadata["pixel_size"]
@@ -186,7 +225,7 @@ def analyse_single(src: Path, plots: Path) -> None:
         ax.plot(q, azimuthal_avg[testlag], label=r"$\Delta t={}$".format(testlag))
     ax.set_xlabel(r"Wavevectors $q\ [{}^{{-1}}]$".format(unit))
     ax.set_ylabel("Azimuthal average [a.u.]")
-    ax.set_title(f"Azimuthal avg | {binary_file_name} | {blob.notes}", fontsize=9)
+    ax.set_title(f"Azimuthal avg | {binary_file_name} | {notes}", fontsize=9)
     ax.legend()
     ax.grid()
     ax.set_yscale("log")
@@ -195,13 +234,24 @@ def analyse_single(src: Path, plots: Path) -> None:
 
     # calculating A, B, plotting
     print("::: plotting A(q), B ...")
-    A, B = static_estimate_A_B(blob.rfft2)
+    if ensemble_average:
+        As, Bs = [], []
+        for fov in rfft2:  # iterate over all fields of view
+            _A, _B = static_estimate_A_B(fov)
+            As.append(_A)
+            Bs.append(_B)
+        A = np.array(As).mean(axis=0)
+        B = np.array(Bs).mean()
+
+    else:
+        A, B = static_estimate_A_B(rfft2)
+
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.plot(q, A, label=r"$A(q)$")
     ax.hlines(B, q[0], q[-1], linestyle="--", colors="k", label=r"$B={:.2f}$".format(B))
     ax.set_xlabel(r"Wavevectors $q\ [{}^{{-1}}]$".format(unit))
     ax.set_ylabel(r"$A(q),\ B$ [a.u.]")
-    ax.set_title(f"$A(q),\ B$ | {binary_file_name} | {blob.notes}", fontsize=9)
+    ax.set_title(f"$A(q),\ B$ | {binary_file_name} | {notes}", fontsize=9)
     ax.legend()
     ax.grid()
     ax.set_ylim((1e-2, 1e6))
@@ -231,7 +281,6 @@ def analyse_single(src: Path, plots: Path) -> None:
             time, isf[:, tu], color=colors[i], label="$q = {:.3f}$".format(test_q[i])
         )
 
-        # popt, pcov = curve_fit(general_exp, time, isf[:, tu], p0=default_p0)
         popt, _ = fit_params[tu]
         ax.plot(
             time,
@@ -243,9 +292,7 @@ def analyse_single(src: Path, plots: Path) -> None:
     ax.set_ylim((-0.1, 1.1))
     ax.set_xlabel(r"Time $t\ [s]$")
     ax.set_ylabel(r"Intermediate scattering function $f(q, \Delta t)$")
-    ax.set_title(
-        f"ISF w/ {exp_type} fit | {binary_file_name} | {blob.notes}", fontsize=9
-    )
+    ax.set_title(f"ISF w/ {exp_type} fit | {binary_file_name} | {notes}", fontsize=9)
     ax.legend()
     ax.grid()
     ax.set_xscale("log")
@@ -290,14 +337,16 @@ def analyse_single(src: Path, plots: Path) -> None:
             axes[0].legend()
 
     ax.set_xlabel(r"Wavevector $q\ [{}^{{-1}}]$".format(unit))
-    fig.suptitle(f"Fitting parameters | {binary_file_name} | {blob.notes}", fontsize=8)
+    fig.suptitle(f"Fitting parameters | {binary_file_name} | {notes}", fontsize=8)
     fig.tight_layout()
     fig.savefig(plots / f"{exp_type}-fit-pars-{binary_file_name}.png", dpi=150)
 
 
 # argpares setup
 parser = argparse.ArgumentParser()
-parser.add_argument("src", help="The location of source file(s) to analyze.")
+parser.add_argument(
+    "src", metavar="SRC", nargs="+", help="The location of source file(s) to analyze."
+)
 parser.add_argument(
     "--dest",
     default="plots/",
@@ -307,6 +356,11 @@ parser.add_argument(
     "--fit-stretched-exp",
     action="store_true",
     help="Fit a stretched exponential instead of a regular exponential.",
+)
+parser.add_argument(
+    "--average",
+    action="store_true",
+    help="Average over multiple input directories, keeping the chunked structure.",
 )
 args = parser.parse_args()
 
@@ -323,18 +377,42 @@ fit_parameter_labels = [
 
 if __name__ == "__main__":
     total_analysis_time = perf_counter()
-    print(f":: Starting analysis plots in {args.src}")
+    # print(f":: Starting analysis plots in {args.src}")
 
     # reading data
-    src = Path(args.src)
-    if src.is_file():  # single file
-        plots = src.parent / args.dest
-        analyse_single(src, plots)
+    src = args.src
+    if isinstance(src, list):
+        sources = [Path(path) for path in src]
+        if all([path.is_dir() for path in sources]) and args.average:
+            print(": Multiple directories to average over chunk-wise:")
+            for path in sources:
+                print(f"  --> {path.name}")
+
+            sources_files = [
+                [file for file in sorted(src.iterdir()) if file.is_file()]
+                for src in sources
+            ]
+
+            plots = Path(args.dest)
+            plots.mkdir(parents=True, exist_ok=True)  # ensure plotting path exists
+            for ensemble in zip(*sources_files):
+                analyse_single(list(ensemble), plots, ensemble_average=True)
+
+        else:
+            raise RuntimeError(
+                "Got mixed directories and single files and/or w/o average flag."
+            )
+
     else:
-        plots = src / args.dest
-        for file in [file for file in sorted(src.iterdir()) if file.is_file()]:
-            print(f"\n:: working on file {file}")
-            analyse_single(file, plots)
+        src = Path(args.src)
+        if src.is_file():  # single file
+            plots = src.parent / args.dest if args.dest == "plots/" else args.dest
+            analyse_single(src, plots)
+        else:
+            plots = src / args.dest if args.dest == "plots/" else args.dest
+            for file in [file for file in sorted(src.iterdir()) if file.is_file()]:
+                print(f"\n:: working on file {file}")
+                analyse_single(file, plots)
 
     print(
         f":: Overall plotting & fitting took {perf_counter() - total_analysis_time: .2f} s"
