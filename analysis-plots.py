@@ -149,7 +149,7 @@ def analyse_single(src: Path, plots: Path) -> None:
     print(
         info_template.format(
             filename=blob.data_source.name,
-            shape=blob.azimuthal_average.shape,
+            shape=blob.image_structure_function.shape,
             notes=blob.notes,
             lag_frac=blob.metadata["fraction_total_lags"],
         )
@@ -243,11 +243,13 @@ def analyse_single(src: Path, plots: Path) -> None:
     ax.set_ylim((-0.1, 1.1))
     ax.set_xlabel(r"Time $t\ [s]$")
     ax.set_ylabel(r"Intermediate scattering function $f(q, \Delta t)$")
-    ax.set_title(f"ISF w/ exp fit | {binary_file_name} | {blob.notes}", fontsize=9)
+    ax.set_title(
+        f"ISF w/ {exp_type} fit | {binary_file_name} | {blob.notes}", fontsize=9
+    )
     ax.legend()
     ax.grid()
     ax.set_xscale("log")
-    fig.savefig(plots / f"isf-{binary_file_name}.png", dpi=150)
+    fig.savefig(plots / f"isf-{exp_type}-{binary_file_name}.png", dpi=150)
     plt.close(fig)
 
     # plotting fit results
@@ -290,17 +292,8 @@ def analyse_single(src: Path, plots: Path) -> None:
     ax.set_xlabel(r"Wavevector $q\ [{}^{{-1}}]$".format(unit))
     fig.suptitle(f"Fitting parameters | {binary_file_name} | {blob.notes}", fontsize=8)
     fig.tight_layout()
-    fig.savefig(plots / f"stretched-exp-fit-pars-{binary_file_name}.png", dpi=150)
+    fig.savefig(plots / f"{exp_type}-fit-pars-{binary_file_name}.png", dpi=150)
 
-
-# default p0 values for curve_fit
-# default_p0 = [1e3, 1.0]  # amplitude, tau; offset is always very close to zero anyway
-default_p0 = [1e3, 1.0, 1.0]
-fit_parameter_labels = [
-    r"$\tau(q)\ [s]$",
-    "amplitude of exponential",
-    r"$\beta(q)$",
-]
 
 # argpares setup
 parser = argparse.ArgumentParser()
@@ -310,8 +303,23 @@ parser.add_argument(
     default="plots/",
     help="The location where to put plots and plot-related data. Default value is 'plots/' relative to src directory.",
 )
+parser.add_argument(
+    "--fit-stretched-exp",
+    action="store_true",
+    help="Fit a stretched exponential instead of a regular exponential.",
+)
 args = parser.parse_args()
 
+# default p0 values for curve_fit
+# default_p0 = [1e3, 1.0]  # amplitude, tau; offset is always very close to zero anyway
+stretched_exp = args.fit_stretched_exp
+exp_type = "stretched-exp" if stretched_exp else "exp"
+default_p0 = [1e3, 1.0, 1.0] if stretched_exp else [1e3, 1.0]
+fit_parameter_labels = [
+    r"$\tau(q)\ [s]$",
+    "amplitude of exponential",
+    r"$\beta(q)$",
+]
 
 if __name__ == "__main__":
     total_analysis_time = perf_counter()
