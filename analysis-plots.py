@@ -167,13 +167,15 @@ def analyse_single(src: Path, plots: Path) -> None:
     time = lags / fps
 
     # representative u/q values (linspaced)
+    idx_range = (int(len(u) * 0.1), int(len(u) * 0.5))
     test_wv_idc = np.linspace(
-        int(len(u) * 0.1), int(len(u) * 0.5), num=6, dtype=np.int64
+        *idx_range, num=6, dtype=np.int64
     )  # test indices for u and q; use only the first half of q range, rest is very noisy
     test_u = u[test_wv_idc]  # get some test u values
     test_q = q[test_wv_idc]
 
     # plotting azimuthal average
+    print("::: plotting azimuthal average for some test-lags .. ")
     fig, ax = plt.subplots(figsize=(6, 6))
     for testlag in test_lags:
         ax.plot(q, azimuthal_avg[testlag], label=r"$\Delta t={}$".format(testlag))
@@ -187,6 +189,7 @@ def analyse_single(src: Path, plots: Path) -> None:
     plt.close(fig)  # cleanup
 
     # calculating A, B, plotting
+    print("::: plotting A(q), B ...")
     A, B = static_estimate_A_B(blob.rfft2)
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.plot(q, A, label=r"$A(q)$")
@@ -200,7 +203,14 @@ def analyse_single(src: Path, plots: Path) -> None:
     fig.savefig(plots / f"static_AB-{binary_file_name}.png", dpi=150)
     plt.close(fig)
 
-    # fitting exponential
+    # fitting exponential to all q values within prepared range
+    fit_u = np.arange(*idx_range)
+    fit_params = np.zeros((len(fit_u), len(default_p0)))
+    for fu in fit_u:
+        pass
+
+    # plotting ISF & fitting exponential
+    print("::: Plotting ISF with exponential fit ...")
     isf = np.zeros_like(azimuthal_avg)
     for i, avg in enumerate(azimuthal_avg):
         isf[i] = intermediate_scattering_function(avg, A, B)
@@ -211,7 +221,6 @@ def analyse_single(src: Path, plots: Path) -> None:
             time, isf[:, tu], color=colors[i], label="$q = {:.3f}$".format(test_q[i])
         )
 
-        # popt, pcov = curve_fit(general_exp, time, isf[:, tu], p0=default_p0)
         popt, pcov = curve_fit(general_exp, time, isf[:, tu], p0=default_p0)
         ax.plot(
             time,
@@ -220,9 +229,7 @@ def analyse_single(src: Path, plots: Path) -> None:
             linewidth=0.8,
             color=colors[i],
         )
-        print(popt, np.sqrt(np.diag(pcov)))
-        # print(popt, np.sqrt(pcov))
-
+    ax.set_ylim((-0.1, 1.1))
     ax.set_xlabel(r"Time $t\ [s]$")
     ax.set_ylabel(r"Intermediate scattering function $f(q, \Delta t)$")
     ax.set_title(f"ISF w/ exp fit | {binary_file_name} | {blob.notes}", fontsize=9)
