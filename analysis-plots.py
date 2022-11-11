@@ -308,10 +308,10 @@ def analyse_single(
     # calculating A, B, plotting ##################################################################
     print("::: plotting A(q), B ...")
     if ensemble_average:
-        As, Bs = np.array([0]), 0.0
+        As, Bs = np.array([0.0]), 0.0
         for fov in rfft2:  # iterate over all fields of view
             _A, _B = static_estimate_A_B(fov)
-            As += _A
+            As = _A + As  # shorthand notation doesn't work
             Bs += _B
         A = As / len(rfft2)  # normalization
         B = Bs / len(rfft2)
