@@ -170,9 +170,57 @@ def print_blob_info(blob: AnalysisBlob) -> None:
     )
 
 
+def plot_exp_fit_parameters(
+    parameters: np.ndarray,
+    fit_q: np.ndarray,
+    colors: List[str],
+    fit_parameter_labels: List[str],
+    xunit: str,
+) -> Tuple[plt.Figure, plt.Axes]:
+
+    nparameters = len(parameters)
+
+    fig, axes = plt.subplots(
+        nparameters, 1, figsize=(6, 2.5 * nparameters), sharex=True
+    )
+
+    for i in range(nparameters):
+        ax = axes[i]
+        par = parameters[i]
+        ax.scatter(fit_q, par, c=colors[i], s=20)
+        ax.set_ylabel(fit_parameter_labels[i])
+        ax.grid(which="both")
+        ax.set_xscale("log")
+
+        # fit parameter specific settings
+        if i == 0:  # tau
+            ax.set_yscale("log")
+            ax.set_ylim((500, 1e4))
+
+        elif i == 1:  # amplitude
+            ax.set_ylim((0.6, 1.3))
+
+        elif i == 2:  # beta
+            ax.set_ylim((0.6, 2))
+            # also plot the first moment of tau in the right axis
+            axes[0].scatter(
+                fit_q,
+                tau_moment(parameters[0], par),
+                c="k",
+                marker="v",
+                label=r"$\langle \tau(q) \rangle$",
+            )
+            axes[0].legend()
+
+    # cosmetics
+    ax.set_xlabel(r"Wavevector $q\ [{}^{{-1}}]$".format(xunit))
+
+    return fig, axes
+
+
 def analyse_single(
     src: Union[Path, List[Path]], plots: Path, ensemble_average: bool = False
-) -> None:
+) -> Optional[Tuple[np.ndarray, np.ndarray]]:
 
     colors = list(TABLEAU_COLORS.values())
 
@@ -213,6 +261,7 @@ def analyse_single(
 
     else:
         print(":: Reading data ...")
+        binary_file_name = src.name.replace(".pkl", "")  # type: ignore
         blob = read_data(src)
         print_blob_info(blob)
 
@@ -327,45 +376,114 @@ def analyse_single(
     # plotting fit results ########################################################################
     print("::: Fit results ...")
 
-    nparameters = len(popt)
-    fig, axes = plt.subplots(
-        nparameters, 1, figsize=(6, 2.5 * nparameters), sharex=True
-    )
-
     parameters = np.array(
         [item[0] for item in fit_params.values()]
     )  # extracting parameters
-    parameters = parameters.T  # transpose to get parameters as func of q
-    for i in range(nparameters):
-        ax = axes[i]
-        par = parameters[i]
-        ax.scatter(fit_q, par, c=colors[i], s=20)
-        ax.set_ylabel(fit_parameter_labels[i])
-        ax.grid(which="both")
-        ax.set_xscale("log")
-        # fit parameter specific settings
-        if i == 0:  # tau
-            ax.set_yscale("log")
-            ax.set_ylim((500, 1e4))
-        if i == 1:  # amplitude
-            ax.set_ylim((0.6, 1.3))
-        if i == 2:  # beta
-            ax.set_ylim((0.6, 2))
-            # also plot the first moment of tau in the right axis
+    parameters = parameters.T
+
+    fig, _ = plot_exp_fit_parameters(
+        parameters, fit_q, colors, fit_parameter_labels, unit
+    )
+
+    fig.suptitle(f"Fitting parameters | {binary_file_name} | {notes}", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(plots / f"{exp_type}-fit-pars-{binary_file_name}.png", dpi=150)
+    plt.close(fig)
+
+    # fitting power law and plotting it ###########################################################
+    if args.fit_power_law:
+        print("::: fitting power law to tau(q) ...")
+
+        if stretched_exp:
+            # this part needs some extra treatment
+            print(
+                "    --> Used stretching exponent; averaging beta(q), then redoing exp fits with "
+                "fixed beta."
+            )
+            beta_avg, beta_std = parameters[2].mean(), parameters[2].std()
+            print(f"    -->〈β(q)〉= {beta_avg:.2f}, std(β(q)) = {beta_std:.2f}")
+            exp_fixed_beta = partial(general_exp, beta=beta_avg)
+
+            # redoing fits, overwriting old values
+            for fu in fit_u:  # ignore the last value in default_p0
+                popt, pcov = curve_fit(
+                    exp_fixed_beta, time, isf[:, fu], p0=default_p0[:-1]
+                )
+                fit_params[fu] = (popt, np.sqrt(np.diag(pcov)))
+
+            # extract parameters array
+            parameters = np.array([item[0] for item in fit_params.values()])
+            parameters = parameters.T
+
+            print("     --> Plotting exponential fit parameters of redone fits...")
+            fig, axes = plot_exp_fit_parameters(
+                parameters, fit_q, colors, fit_parameter_labels, unit
+            )
+            # manually plot the first moment as well
+            tau_m = tau_moment(parameters[0], beta_avg)
             axes[0].scatter(
                 fit_q,
-                tau_moment(parameters[0], par),
+                tau_m,
                 c="k",
                 marker="v",
                 label=r"$\langle \tau(q) \rangle$",
             )
             axes[0].legend()
 
-    ax.set_xlabel(r"Wavevector $q\ [{}^{{-1}}]$".format(unit))
-    fig.suptitle(f"Fitting parameters | {binary_file_name} | {notes}", fontsize=8)
-    fig.tight_layout()
-    fig.savefig(plots / f"{exp_type}-fit-pars-{binary_file_name}.png", dpi=150)
-    plt.close(fig)
+            fig.suptitle(
+                f"Fitting parameters | β={beta_avg:.2f} | {binary_file_name} | {notes}",
+                fontsize=8,
+            )
+            fig.tight_layout()
+            fig.savefig(
+                plots / f"{exp_type}-fixed-beta-fit-pars-{binary_file_name}.png",
+                dpi=150,
+            )
+            plt.close(fig)
+
+        print("::: Plotting power law ...")
+        power_law_p0 = [1.0, -1.5]  # prefactor, exponent
+        title_addendum = ""
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        # first plot tau(q)
+        tau = parameters[0]
+        ax.scatter(fit_q, tau, s=20)
+        if stretched_exp:
+            ax.scatter(
+                fit_q, tau_m, c="k", marker="v", label=plot_labels["tau_moment_legend"]
+            )
+            popt, pcov = curve_fit(
+                power_law, fit_q, tau_m, p0=power_law_p0
+            )  # fit tau_m
+            title_addendum = r"| $\beta = {:.2f}$".format(beta_avg)
+        else:
+            popt, pcov = curve_fit(power_law, fit_q, tau, p0=power_law_p0)
+
+        popt_err = np.sqrt(np.diag(pcov))
+        _, eta = popt
+        ax.plot(
+            fit_q,
+            power_law(fit_q, *popt),
+            c="tab:red",
+            linestyle="--",
+            label=plot_labels["power_law_legend"].format(eta=eta),
+        )
+
+        ax.set_ylim((500, 1e4))
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel(plot_labels["wavevector_axis"].format(unit=unit))
+        ax.set_ylabel(plot_labels["tau_axis"])
+        ax.set_title(f"Power law fit {title_addendum}")
+        ax.grid(which="both")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(plots / f"power-law-{exp_type}-{binary_file_name}.png")
+        plt.close(fig)
+
+        return popt, popt_err
+    return None
 
 
 # argpares setup
@@ -406,6 +524,12 @@ fit_parameter_labels = [
     "amplitude of exponential",
     r"$\beta(q)$",
 ]
+plot_labels = {
+    "tau_moment_legend": r"$\langle \tau(q) \rangle$",
+    "power_law_legend": r"$\sim q^{{ {eta:.2f} }}$",  # to be formatted
+    "wavevector_axis": r"Wavevectors $q\ [{unit}^{{-1}}]$",  # to be formatted
+    "tau_axis": r"$\tau(q)\ [s]$",
+}
 
 if __name__ == "__main__":
     total_analysis_time = perf_counter()
@@ -413,7 +537,7 @@ if __name__ == "__main__":
 
     # reading data
     src = args.src
-    if isinstance(src, list):
+    if len(src) > 1:
         sources = [Path(path) for path in src]
         if all([path.is_dir() for path in sources]) and args.average:
             print(": Multiple directories to average over chunk-wise:")
@@ -428,7 +552,9 @@ if __name__ == "__main__":
             plots = Path(args.dest)
             plots.mkdir(parents=True, exist_ok=True)  # ensure plotting path exists
             for ensemble in zip(*sources_files):
-                analyse_single(list(ensemble), plots, ensemble_average=True)
+                result = analyse_single(list(ensemble), plots, ensemble_average=True)
+                if result is not None:
+                    print(result)
 
         else:
             raise RuntimeError(
@@ -436,7 +562,7 @@ if __name__ == "__main__":
             )
 
     else:
-        src = Path(args.src)
+        src = Path(*src)
         if src.is_file():  # single file
             plots = src.parent / args.dest if args.dest == "plots/" else args.dest
             analyse_single(src, plots)
@@ -444,7 +570,9 @@ if __name__ == "__main__":
             plots = src / args.dest if args.dest == "plots/" else args.dest
             for file in [file for file in sorted(src.iterdir()) if file.is_file()]:
                 print(f"\n:: working on file {file}")
-                analyse_single(file, plots)
+                result = analyse_single(file, plots)
+                if result is not None:
+                    print(result)
 
     print(
         f":: Overall plotting & fitting took {perf_counter() - total_analysis_time: .2f} s"
