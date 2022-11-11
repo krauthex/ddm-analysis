@@ -139,12 +139,13 @@ def print_blob_info(blob: AnalysisBlob) -> None:
         "[info] {filename} | shape {shape} | notes {notes} | lag fraction {lag_frac}"
     )
 
+    metadata = blob.metadata if blob.metadata is not None else {}
     print(
         info_template.format(
             filename=blob.data_source.name,
             shape=blob.image_structure_function.shape,
             notes=blob.notes,
-            lag_frac=blob.metadata["fraction_total_lags"],
+            lag_frac=metadata.get("fraction_total_lags"),
         )
     )
 
@@ -186,6 +187,9 @@ def analyse_single(
         azimuthal_avg = np.zeros((len(dqt), metadata["image_size"] // 2))
         for i in range(len(dqt)):
             azimuthal_avg[i] = azimuthal_average(dqt[i], dqt_dist)
+
+        # memory cleanup
+        del ensemble[:], blob
 
     else:
         print(":: Reading data ...")
@@ -235,16 +239,12 @@ def analyse_single(
     # calculating A, B, plotting
     print("::: plotting A(q), B ...")
     if ensemble_average:
-        As, Bs = 0, 0
+        As, Bs = np.array([0]), 0.0
         for fov in rfft2:  # iterate over all fields of view
             _A, _B = static_estimate_A_B(fov)
-            # As.append(_A)
-            # Bs.append(_B)
             As += _A
             Bs += _B
-        # A = np.array(As).mean(axis=0)
-        # B = np.array(Bs).mean()
-        A = As / len(rfft2)
+        A = As / len(rfft2)  # normalization
         B = Bs / len(rfft2)
         del As, Bs, _A, _B, rfft2
 
@@ -347,9 +347,6 @@ def analyse_single(
     fig.savefig(plots / f"{exp_type}-fit-pars-{binary_file_name}.png", dpi=150)
     plt.close(fig)
 
-    if ensemble_average:
-        del ensemble[:], blob
-
 
 # argpares setup
 parser = argparse.ArgumentParser()
@@ -370,6 +367,12 @@ parser.add_argument(
     "--average",
     action="store_true",
     help="Average over multiple input directories, keeping the chunked structure.",
+)
+parser.add_argument(
+    "--power-law-fit",
+    action="store_true",
+    help="Additionally fit a power law to tau(q). If the stretching exponent is used, the average "
+    "of the stretching exponent is used to redo all fits, and then the power law fit is performed.",
 )
 args = parser.parse_args()
 
