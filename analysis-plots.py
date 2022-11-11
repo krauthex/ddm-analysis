@@ -235,13 +235,18 @@ def analyse_single(
     # calculating A, B, plotting
     print("::: plotting A(q), B ...")
     if ensemble_average:
-        As, Bs = [], []
+        As, Bs = 0, 0
         for fov in rfft2:  # iterate over all fields of view
             _A, _B = static_estimate_A_B(fov)
-            As.append(_A)
-            Bs.append(_B)
-        A = np.array(As).mean(axis=0)
-        B = np.array(Bs).mean()
+            # As.append(_A)
+            # Bs.append(_B)
+            As += _A
+            Bs += _B
+        # A = np.array(As).mean(axis=0)
+        # B = np.array(Bs).mean()
+        A = As / len(rfft2)
+        B = Bs / len(rfft2)
+        del As, Bs, _A, _B, rfft2
 
     else:
         A, B = static_estimate_A_B(rfft2)
@@ -340,6 +345,10 @@ def analyse_single(
     fig.suptitle(f"Fitting parameters | {binary_file_name} | {notes}", fontsize=8)
     fig.tight_layout()
     fig.savefig(plots / f"{exp_type}-fit-pars-{binary_file_name}.png", dpi=150)
+    plt.close(fig)
+
+    if ensemble_average:
+        del ensemble[:], blob
 
 
 # argpares setup
