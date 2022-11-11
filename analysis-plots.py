@@ -66,6 +66,26 @@ def tau_moment(tau: float, beta: float) -> float:
     return tau / beta * gamma(1 / beta)
 
 
+def power_law(q: np.ndarray, a: float, eta: float) -> np.ndarray:
+    """A general power law function of the shape f(q) = a * q^eta.
+
+    Parameters
+    ----------
+    q : np.ndarray
+        Input values.
+    a : float
+        Constant prefactor.
+    eta : float
+        Scaling exponent.
+
+    Returns
+    -------
+    np.ndarray
+        The computed power law.
+    """
+    return a * q**eta
+
+
 def static_estimate_A_B(rfft2: np.ndarray) -> Tuple[np.ndarray, float]:
     """Estimate the values for A(q) and B from an average of the power spectra of ImageSet FFT2s.
 
