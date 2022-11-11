@@ -242,7 +242,7 @@ def analyse_single(
     test_u = u[test_wv_idc]  # get some test u values
     test_q = q[test_wv_idc]
 
-    # plotting azimuthal average
+    # plotting azimuthal average ##################################################################
     print("::: plotting azimuthal average for some test-lags .. ")
     fig, ax = plt.subplots(figsize=(6, 6))
     for testlag in test_lags:
@@ -256,7 +256,7 @@ def analyse_single(
     fig.savefig(plots / f"az-avg-{binary_file_name}.png", dpi=150)
     plt.close(fig)  # cleanup
 
-    # calculating A, B, plotting
+    # calculating A, B, plotting ##################################################################
     print("::: plotting A(q), B ...")
     if ensemble_average:
         As, Bs = np.array([0]), 0.0
@@ -284,7 +284,7 @@ def analyse_single(
     fig.savefig(plots / f"static_AB-{binary_file_name}.png", dpi=150)
     plt.close(fig)
 
-    # calculating ISF
+    # calculating ISF #############################################################################
     print("::: Plotting ISF with exponential fit ...")
     isf = np.zeros_like(azimuthal_avg)
     for i, avg in enumerate(azimuthal_avg):
@@ -324,7 +324,7 @@ def analyse_single(
     fig.savefig(plots / f"isf-{exp_type}-{binary_file_name}.png", dpi=150)
     plt.close(fig)
 
-    # plotting fit results
+    # plotting fit results ########################################################################
     print("::: Fit results ...")
 
     nparameters = len(popt)
