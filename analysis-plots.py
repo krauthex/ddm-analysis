@@ -67,7 +67,7 @@ def tau_moment(tau: float, beta: float) -> float:
 
 
 def power_law(q: np.ndarray, a: float, eta: float) -> np.ndarray:
-    """A general power law function of the shape f(q) = a * q^eta.
+    """A general power law function of the shape f(q) = a * q^-eta.
 
     Parameters
     ----------
@@ -83,7 +83,7 @@ def power_law(q: np.ndarray, a: float, eta: float) -> np.ndarray:
     np.ndarray
         The computed power law.
     """
-    return a * q**eta
+    return a * q**-eta
 
 
 def static_estimate_A_B(rfft2: np.ndarray) -> Tuple[np.ndarray, float]:
@@ -442,7 +442,7 @@ def analyse_single(
             plt.close(fig)
 
         print("::: Plotting power law ...")
-        power_law_p0 = [1.0, -1.5]  # prefactor, exponent
+        power_law_p0 = [1.0, 1.3]  # prefactor, exponent
         title_addendum = ""
 
         fig, ax = plt.subplots(figsize=(6, 4))
@@ -475,7 +475,7 @@ def analyse_single(
         ax.set_yscale("log")
         ax.set_xlabel(plot_labels["wavevector_axis"].format(unit=unit))
         ax.set_ylabel(plot_labels["tau_axis"])
-        ax.set_title(f"Power law fit {title_addendum}")
+        ax.set_title(f"Power law fit {title_addendum} | {binary_file_name}")
         ax.grid(which="both")
         ax.legend()
         fig.tight_layout()
@@ -483,6 +483,7 @@ def analyse_single(
         plt.close(fig)
 
         return popt, popt_err
+
     return None
 
 
@@ -526,7 +527,7 @@ fit_parameter_labels = [
 ]
 plot_labels = {
     "tau_moment_legend": r"$\langle \tau(q) \rangle$",
-    "power_law_legend": r"$\sim q^{{ {eta:.2f} }}$",  # to be formatted
+    "power_law_legend": r"$\sim q^{{ -{eta:.2f} }}$",  # to be formatted
     "wavevector_axis": r"Wavevectors $q\ [{unit}^{{-1}}]$",  # to be formatted
     "tau_axis": r"$\tau(q)\ [s]$",
 }
@@ -535,6 +536,8 @@ if __name__ == "__main__":
     total_analysis_time = perf_counter()
     # print(f":: Starting analysis plots in {args.src}")
 
+    result_pars = []
+    result_errs = []
     # reading data
     src = args.src
     if len(src) > 1:
@@ -554,7 +557,9 @@ if __name__ == "__main__":
             for ensemble in zip(*sources_files):
                 result = analyse_single(list(ensemble), plots, ensemble_average=True)
                 if result is not None:
-                    print(result)
+                    pars, errs = result
+                    result_pars.append(pars)
+                    result_errs.append(errs)
 
         else:
             raise RuntimeError(
@@ -565,14 +570,37 @@ if __name__ == "__main__":
         src = Path(*src)
         if src.is_file():  # single file
             plots = src.parent / args.dest if args.dest == "plots/" else args.dest
-            analyse_single(src, plots)
+            result = analyse_single(src, plots)
+            if result is not None:
+                print(result)
         else:
             plots = src / args.dest if args.dest == "plots/" else args.dest
             for file in [file for file in sorted(src.iterdir()) if file.is_file()]:
                 print(f"\n:: working on file {file}")
                 result = analyse_single(file, plots)
                 if result is not None:
-                    print(result)
+                    pars, errs = result
+                    result_pars.append(pars)
+                    result_errs.append(errs)
+
+    if len(result_pars):
+        print(":: Plotting scaling exponent evolution ... ")
+        eta = np.array(result_pars).T[1]
+        eta_err = np.array(result_errs).T[1]
+        age = np.arange(len(eta))
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.errorbar(age, eta, eta_err, fmt=".", capthick=1, capsize=2, ecolor="tab:red")
+        ax.set_xlabel("Age [chunk]")
+        ax.set_ylabel("Scaling exponent $\eta$")
+        ax.set_title(
+            r"{}| Scaling exponent $\eta$ evolution for $\tau \sim q^{{\eta}}$".format(
+                exp_type
+            )
+        )
+        ax.set_ylim((0.9, 1.35))
+        ax.grid()
+        fig.savefig(plots / f"scaling-exponent-evo-{exp_type}.png")
 
     print(
         f":: Overall plotting & fitting took {perf_counter() - total_analysis_time: .2f} s"
