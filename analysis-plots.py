@@ -389,7 +389,7 @@ parser.add_argument(
     help="Average over multiple input directories, keeping the chunked structure.",
 )
 parser.add_argument(
-    "--power-law-fit",
+    "--fit-power-law",
     action="store_true",
     help="Additionally fit a power law to tau(q). If the stretching exponent is used, the average "
     "of the stretching exponent is used to redo all fits, and then the power law fit is performed.",
