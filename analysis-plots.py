@@ -594,7 +594,7 @@ if __name__ == "__main__":
         ax.set_xlabel("Age [chunk]")
         ax.set_ylabel("Scaling exponent $\eta$")
         ax.set_title(
-            r"{}| Scaling exponent $\eta$ evolution for $\tau \sim q^{{\eta}}$".format(
+            r"{}| Scaling exponent $\eta$ evolution for $\tau \sim q^{{-\eta}}$".format(
                 exp_type
             )
         )
