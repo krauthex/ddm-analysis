@@ -110,7 +110,7 @@ notes_template = "chunk: {chunk}; normalized: {normalized}; windowed: {windowed}
 metadata = {
     "fps": 1 / 60,  # 1 frame per minute
     "magnification": 1,  # the magnification is already accounted for in the given voxel size
-    "pixel_size": 12.9,
+    "pixel_size": 1.29,
     "pixel_size_unit": "µm",
     "image_size": 512,  # always assume square images; see preparation below
     "chunksize": chunksize,
