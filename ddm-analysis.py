@@ -96,7 +96,7 @@ def chunkify(data: np.ndarray, chunksize: int, overlap: int = 0) -> List[np.ndar
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("src", help="Location of TIFF file(s) to be processed.")
+parser.add_argument("src", help="Location of TIFF file to be processed.")
 
 args = parser.parse_args()
 

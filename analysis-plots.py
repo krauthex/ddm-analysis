@@ -415,7 +415,7 @@ def analyse_single(
             parameters = np.array([item[0] for item in fit_params.values()])
             parameters = parameters.T
 
-            print("     --> Plotting exponential fit parameters of redone fits...")
+            print("    --> Plotting exponential fit parameters of redone fits...")
             fig, axes = plot_exp_fit_parameters(
                 parameters, fit_q, colors, fit_parameter_labels, unit
             )
