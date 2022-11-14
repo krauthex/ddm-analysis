@@ -218,6 +218,29 @@ def plot_exp_fit_parameters(
     return fig, axes
 
 
+def finalize_and_save(fig: plt.Figure, figname: Path, dpi: int = 150) -> None:
+    """Finalize figure, save it and close the figure object.
+
+    Parameters
+    ----------
+    fig : plt.Figure
+        The figure to be finalized.
+    figname : Path
+        Full path where the figure should be saved to.
+    dpi : int, optional
+        DPI value to be passed to plt.figsave, by default 150
+    """
+    # checking plot file ending
+    if not figname.name.endswith(".png"):
+        figname = figname.parent / (figname.name + ".png")
+
+    # cosmetics
+    fig.tight_layout()
+
+    fig.savefig(figname, dpi=dpi)
+    plt.close(fig)
+
+
 def analyse_single(
     src: Union[Path, List[Path]], plots: Path, ensemble_average: bool = False
 ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
@@ -302,8 +325,10 @@ def analyse_single(
     ax.legend()
     ax.grid()
     ax.set_yscale("log")
-    fig.savefig(plots / f"az-avg-{binary_file_name}.png", dpi=150)
-    plt.close(fig)  # cleanup
+    # fig.savefig(plots / f"az-avg-{binary_file_name}.png", dpi=150)
+    # plt.close(fig)  # cleanup
+
+    finalize_and_save(fig, plots / f"az-avg-{binary_file_name}")
 
     # calculating A, B, plotting ##################################################################
     print("::: plotting A(q), B ...")
@@ -330,8 +355,9 @@ def analyse_single(
     ax.grid()
     ax.set_ylim((1e-2, 1e6))
     ax.set_yscale("log")
-    fig.savefig(plots / f"static_AB-{binary_file_name}.png", dpi=150)
-    plt.close(fig)
+    # fig.savefig(plots / f"static_AB-{binary_file_name}.png", dpi=150)
+    # plt.close(fig)
+    finalize_and_save(fig, plots / f"static_AB-{binary_file_name}")
 
     # calculating ISF #############################################################################
     print("::: Plotting ISF with exponential fit ...")
@@ -370,8 +396,9 @@ def analyse_single(
     ax.legend()
     ax.grid()
     ax.set_xscale("log")
-    fig.savefig(plots / f"isf-{exp_type}-{binary_file_name}.png", dpi=150)
-    plt.close(fig)
+    # fig.savefig(plots / f"isf-{exp_type}-{binary_file_name}.png", dpi=150)
+    # plt.close(fig)
+    finalize_and_save(fig, plots / f"isf-{exp_type}-{binary_file_name}")
 
     # plotting fit results ########################################################################
     print("::: Fit results ...")
@@ -386,9 +413,10 @@ def analyse_single(
     )
 
     fig.suptitle(f"Fitting parameters | {binary_file_name} | {notes}", fontsize=8)
-    fig.tight_layout()
-    fig.savefig(plots / f"{exp_type}-fit-pars-{binary_file_name}.png", dpi=150)
-    plt.close(fig)
+    # fig.tight_layout()
+    # fig.savefig(plots / f"{exp_type}-fit-pars-{binary_file_name}.png", dpi=150)
+    # plt.close(fig)
+    finalize_and_save(fig, plots / f"{exp_type}-fit-pars-{binary_file_name}")
 
     # fitting power law and plotting it ###########################################################
     if args.fit_power_law:
@@ -434,12 +462,15 @@ def analyse_single(
                 f"Fitting parameters | β={beta_avg:.2f} | {binary_file_name} | {notes}",
                 fontsize=8,
             )
-            fig.tight_layout()
-            fig.savefig(
-                plots / f"{exp_type}-fixed-beta-fit-pars-{binary_file_name}.png",
-                dpi=150,
+            # fig.tight_layout()
+            # fig.savefig(
+            #    plots / f"{exp_type}-fixed-beta-fit-pars-{binary_file_name}.png",
+            #    dpi=150,
+            # )
+            # plt.close(fig)
+            finalize_and_save(
+                fig, plots / f"{exp_type}-fixed-beta-fit-pars-{binary_file_name}"
             )
-            plt.close(fig)
 
         print("::: Plotting power law ...")
         power_law_p0 = [1.0, 1.3]  # prefactor, exponent
@@ -478,9 +509,10 @@ def analyse_single(
         ax.set_title(f"Power law fit {title_addendum} | {binary_file_name}")
         ax.grid(which="both")
         ax.legend()
-        fig.tight_layout()
-        fig.savefig(plots / f"power-law-{exp_type}-{binary_file_name}.png")
-        plt.close(fig)
+        # fig.tight_layout()
+        # fig.savefig(plots / f"power-law-{exp_type}-{binary_file_name}.png")
+        # plt.close(fig)
+        finalize_and_save(fig, plots / f"power-law-{exp_type}-{binary_file_name}")
 
         return popt, popt_err
 
