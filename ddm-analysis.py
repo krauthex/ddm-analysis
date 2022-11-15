@@ -198,5 +198,5 @@ if __name__ == "__main__":
 
     overall_time = perf_counter() - total_time_start
     print(
-        f"\n:: Overall processing took {overall_time // 60} min {overall_time % 60:.2f} s."
+        f"\n:: Overall processing took {int(overall_time // 60)} min {overall_time % 60:.2f} s."
     )
