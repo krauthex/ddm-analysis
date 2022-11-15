@@ -96,7 +96,9 @@ def chunkify(data: np.ndarray, chunksize: int, overlap: int = 0) -> List[np.ndar
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("src", help="Location of TIFF file to be processed.")
+parser.add_argument(
+    "src", metavar="SRC", nargs="+", help="Location of TIFF file(s) to be processed."
+)
 
 args = parser.parse_args()
 
@@ -119,53 +121,79 @@ metadata = {
 }
 
 
+def process_single_tiff(src: Path) -> None:
+    """Process a single tiff file.
+
+    Parameters
+    ----------
+    src : Path
+        The path to the tiff file.
+    """
+
+    process_single_time = perf_counter()
+    print(f"\n:: Working on file: {src}")
+
+    # folders ...
+    print(":: Creating folder structure ...")
+    if not isinstance(src, Path):
+        src = Path(src)
+
+    datastore, plots = create_folderstructure(
+        src.parent, f"{src.name.replace('.tif', '')}-analysis"
+    )
+
+    # chunking setup
+    length, y, x = get_dataset_dims(src)
+    tiff_indices = np.arange(length)
+
+    for i, chunk in enumerate(chunkify(tiff_indices, chunksize, overlap)):
+        chunk_calc_time = perf_counter()
+        print(f":: [chunk={i}] Processing image range [{chunk[0]}-{chunk[-1]}]")
+
+        data = tiff_to_numpy(src, seq=chunk)
+        if y != x:
+            square_dim = min(y, x)
+            print(
+                f"::: dimensions not square, cropping to {square_dim}x{square_dim}..."
+            )
+            data = data[:, :square_dim, :square_dim]
+
+        print("::: Performing analysis now ...")
+        rfft2, azimuthal_avg, dqt = run(data, lags, keep_full_structure=True)
+
+        print(f"::: Analysis took {perf_counter() - chunk_calc_time:.2f} s")
+
+        print("::: Creating data structure ... ")
+        blob = AnalysisBlob(
+            data_source=src,
+            rfft2=rfft2,
+            lags=lags,
+            image_structure_function=dqt,
+            azimuthal_average=azimuthal_avg,
+            metadata=metadata,
+            notes=notes_template.format(chunk=i, normalized=True, windowed=False),
+        )
+
+        print("::: Writing datastructure to binary file ... ")
+        store_data(blob, path=datastore, name=f"chunk-{i:03d}")
+
+    print(
+        f":: processing duration for {src.name}: {perf_counter() - process_single_time:.2f} s."
+    )
+
+
 if __name__ == "__main__":
     total_time_start = perf_counter()
+
     src = args.src
-    if src.endswith(".tif"):
-        print(f":: Working on single file: {src}")
+    tiff_paths = [Path(tiff) for tiff in args.src]
 
-        # folders ...
-        print(":: Creating folder structure ...")
-        src = Path(src)
-        datastore, plots = create_folderstructure(
-            src.parent, f"{src.name.replace('.tif', '')}-analysis"
-        )
+    # info output
+    print(":: Processing the following files:")
+    for tiffpath in tiff_paths:
+        print(f":: --> {tiffpath.name}")
 
-        # chunking setup
-        length, y, x = get_dataset_dims(src)
-        tiff_indices = np.arange(length)
+    for tiff in tiff_paths:
+        process_single_tiff(tiff)
 
-        for i, chunk in enumerate(chunkify(tiff_indices, chunksize, overlap)):
-            chunk_calc_time = perf_counter()
-            print(f":: [chunk={i}] Processing image range [{chunk[0]}-{chunk[-1]}]")
-
-            data = tiff_to_numpy(src, seq=chunk)
-            if y != x:
-                square_dim = min(y, x)
-                print(
-                    f"::: dimensions not square, cropping to {square_dim}x{square_dim}..."
-                )
-                data = data[:, :square_dim, :square_dim]
-
-            print("::: Performing analysis now ...")
-            rfft2, azimuthal_avg, dqt = run(data, lags, keep_full_structure=True)
-
-            print(f"::: Analysis took {perf_counter() - chunk_calc_time:.2f} s")
-
-            print("::: Creating data structure ... ")
-            blob = AnalysisBlob(
-                data_source=src,
-                rfft2=rfft2,
-                lags=lags,
-                image_structure_function=dqt,
-                azimuthal_average=azimuthal_avg,
-                metadata=metadata,
-                notes=notes_template.format(chunk=i, normalized=True, windowed=False),
-            )
-
-            print("::: Writing datastructure to binary file ... ")
-            store_data(blob, path=datastore, name=f"chunk-{i:03d}")
-        print(
-            f"\n:: Overall processing took {perf_counter() - total_time_start:.2f} s."
-        )
+    print(f"\n:: Overall processing took {perf_counter() - total_time_start:.2f} s.")
