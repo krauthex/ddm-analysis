@@ -218,6 +218,50 @@ def plot_exp_fit_parameters(
     return fig, axes
 
 
+def decorate_axes(
+    ax: plt.Axes,
+    xlabel: str,
+    ylabel: str,
+    title: str,
+    legend: bool = True,
+    grid: bool = True,
+    grid_args: Optional[Dict[str, str]] = {"which": "both"},
+    xscale: str = "log",
+    yscale: str = "log",
+    ylim: Optional[Tuple[float, float]] = None,
+    xlim: Optional[Tuple[float, float]] = None,
+    title_fontsize: int = 9,
+) -> plt.Axes:
+    """Decorate the given plt.Axes instance with labels, title, legend, ..."""
+
+    # labels & title
+    ax.set_title(title, fontsize=title_fontsize)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+
+    # grid & legend
+    if grid:
+        if grid_args is None:
+            ax.grid()
+        else:
+            # e.g. grid_args = {'which': 'both'} for grid lines on minor ticks as well
+            ax.grid(**grid_args)
+
+    if legend:
+        ax.legend()
+
+    # scale & limits
+    ax.set_xscale(xscale)
+    ax.set_yscale(yscale)
+
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    if xlim is not None:
+        ax.set_xlim(xlim)
+
+    return ax
+
+
 def finalize_and_save(fig: plt.Figure, figname: Path, dpi: int = 150) -> None:
     """Finalize figure, save it and close the figure object.
 
@@ -319,15 +363,15 @@ def analyse_single(
     fig, ax = plt.subplots(figsize=(6, 6))
     for testlag in test_lags:
         ax.plot(q, azimuthal_avg[testlag], label=r"$\Delta t={}$".format(testlag))
-    ax.set_xlabel(r"Wavevectors $q\ [{}^{{-1}}]$".format(unit))
-    ax.set_ylabel("Azimuthal average [a.u.]")
-    ax.set_title(f"Azimuthal avg | {binary_file_name} | {notes}", fontsize=9)
-    ax.legend()
-    ax.grid()
-    ax.set_yscale("log")
-    # fig.savefig(plots / f"az-avg-{binary_file_name}.png", dpi=150)
-    # plt.close(fig)  # cleanup
 
+    ax = decorate_axes(
+        ax,
+        xlabel=plot_labels["wavevector_axis"].format(unit=unit),
+        ylabel="Azimuthal average [a.u.]",
+        title=f"Azimuthal avg | {binary_file_name} | {notes}",
+        grid_args=None,
+        xscale="linear",
+    )
     finalize_and_save(fig, plots / f"az-avg-{binary_file_name}")
 
     # calculating A, B, plotting ##################################################################
@@ -348,15 +392,17 @@ def analyse_single(
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.plot(q, A, label=r"$A(q)$")
     ax.hlines(B, q[0], q[-1], linestyle="--", colors="k", label=r"$B={:.2f}$".format(B))
-    ax.set_xlabel(r"Wavevectors $q\ [{}^{{-1}}]$".format(unit))
-    ax.set_ylabel(r"$A(q),\ B$ [a.u.]")
-    ax.set_title(f"$A(q),\ B$ | {binary_file_name} | {notes}", fontsize=9)
-    ax.legend()
-    ax.grid()
-    ax.set_ylim((1e-2, 1e6))
-    ax.set_yscale("log")
-    # fig.savefig(plots / f"static_AB-{binary_file_name}.png", dpi=150)
-    # plt.close(fig)
+
+    ax = decorate_axes(
+        ax,
+        xlabel=plot_labels["wavevector_axis"].format(unit=unit),
+        ylabel=r"$A(q),\ B$ [a.u.]",
+        title=f"$A(q),\ B$ | {binary_file_name} | {notes}",
+        grid_args=None,
+        xscale="linear",
+        ylim=(1e-2, 1e6),
+    )
+
     finalize_and_save(fig, plots / f"static_AB-{binary_file_name}")
 
     # calculating ISF #############################################################################
@@ -389,15 +435,15 @@ def analyse_single(
             linewidth=0.8,
             color=colors[i],
         )
-    ax.set_ylim((-0.1, 1.1))
-    ax.set_xlabel(r"Time $t\ [s]$")
-    ax.set_ylabel(r"Intermediate scattering function $f(q, \Delta t)$")
-    ax.set_title(f"ISF w/ {exp_type} fit | {binary_file_name} | {notes}", fontsize=9)
-    ax.legend()
-    ax.grid()
-    ax.set_xscale("log")
-    # fig.savefig(plots / f"isf-{exp_type}-{binary_file_name}.png", dpi=150)
-    # plt.close(fig)
+    ax = decorate_axes(
+        ax,
+        xlabel=r"Lag times $t\ [s]$",
+        ylabel=r"Intermediate scattering function $f(q, \Delta t)$",
+        title=f"ISF w/ {exp_type} fit | {binary_file_name} | {notes}",
+        yscale="linear",
+        grid_args=None,
+        ylim=(-0.1, 1.1),
+    )
     finalize_and_save(fig, plots / f"isf-{exp_type}-{binary_file_name}")
 
     # plotting fit results ########################################################################
@@ -413,9 +459,6 @@ def analyse_single(
     )
 
     fig.suptitle(f"Fitting parameters | {binary_file_name} | {notes}", fontsize=8)
-    # fig.tight_layout()
-    # fig.savefig(plots / f"{exp_type}-fit-pars-{binary_file_name}.png", dpi=150)
-    # plt.close(fig)
     finalize_and_save(fig, plots / f"{exp_type}-fit-pars-{binary_file_name}")
 
     # fitting power law and plotting it ###########################################################
@@ -462,12 +505,6 @@ def analyse_single(
                 f"Fitting parameters | β={beta_avg:.2f} | {binary_file_name} | {notes}",
                 fontsize=8,
             )
-            # fig.tight_layout()
-            # fig.savefig(
-            #    plots / f"{exp_type}-fixed-beta-fit-pars-{binary_file_name}.png",
-            #    dpi=150,
-            # )
-            # plt.close(fig)
             finalize_and_save(
                 fig, plots / f"{exp_type}-fixed-beta-fit-pars-{binary_file_name}"
             )
@@ -501,17 +538,14 @@ def analyse_single(
             label=plot_labels["power_law_legend"].format(eta=eta),
         )
 
-        ax.set_ylim((500, 1e4))
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlabel(plot_labels["wavevector_axis"].format(unit=unit))
-        ax.set_ylabel(plot_labels["tau_axis"])
-        ax.set_title(f"Power law fit {title_addendum} | {binary_file_name}")
-        ax.grid(which="both")
-        ax.legend()
-        # fig.tight_layout()
-        # fig.savefig(plots / f"power-law-{exp_type}-{binary_file_name}.png")
-        # plt.close(fig)
+        ax = decorate_axes(
+            ax,
+            xlabel=plot_labels["wavevector_axis"].format(unit=unit),
+            ylabel=plot_labels["tau_axis"],
+            title=f"Power law fit {title_addendum} | {binary_file_name}",
+            grid_args={"which": "both"},
+            ylim=(500, 1e4),
+        )
         finalize_and_save(fig, plots / f"power-law-{exp_type}-{binary_file_name}")
 
         return popt, popt_err
@@ -552,6 +586,17 @@ args = parser.parse_args()
 stretched_exp = args.fit_stretched_exp
 exp_type = "stretched-exp" if stretched_exp else "exp"
 default_p0 = [1e3, 1.0, 1.0] if stretched_exp else [1e3, 1.0]
+# bounds2-tuple of array_like, optional
+if stretched_exp:
+    isf_fit_boundaries = (  # tau, amplitude, beta
+        [0, 0, 0],  # lower bounds for all parameters
+        [np.inf, 1, 10],  # upper bounds
+    )
+else:
+    isf_fit_boundaries = (  # tau, amplitude
+        [0, 0],  # lower bounds for all parameters
+        [np.inf, 1],  # upper bounds
+    )
 fit_parameter_labels = [
     r"$\tau(q)\ [s]$",
     "amplitude of exponential",
@@ -623,15 +668,19 @@ if __name__ == "__main__":
 
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.errorbar(age, eta, eta_err, fmt=".", capthick=1, capsize=2, ecolor="tab:red")
-        ax.set_xlabel("Age [chunk]")
-        ax.set_ylabel("Scaling exponent $\eta$")
-        ax.set_title(
-            r"{}| Scaling exponent $\eta$ evolution for $\tau \sim q^{{-\eta}}$".format(
+
+        ax = decorate_axes(
+            ax,
+            xlabel="Age [chunk]",
+            ylabel="Scaling exponent $\eta$",
+            title=r"{}| Scaling exponent $\eta$ evolution for $\tau \sim q^{{-\eta}}$".format(
                 exp_type
-            )
+            ),
+            ylim=(0.9, 1.35),
+            grid_args=None,
+            yscale="linear",
+            xscale="linear",
         )
-        ax.set_ylim((0.9, 1.35))
-        ax.grid()
         fig.savefig(plots / f"scaling-exponent-evo-{exp_type}.png")
 
     print(
