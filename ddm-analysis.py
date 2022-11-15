@@ -95,32 +95,6 @@ def chunkify(data: np.ndarray, chunksize: int, overlap: int = 0) -> List[np.ndar
     return chunks
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "src", metavar="SRC", nargs="+", help="Location of TIFF file(s) to be processed."
-)
-
-args = parser.parse_args()
-
-chunksize = 200
-overlap = 100
-lag_pct = 0.6
-lags = np.arange(1, int(lag_pct * chunksize))
-
-notes_template = "chunk: {chunk}; normalized: {normalized}; windowed: {windowed}"
-
-metadata = {
-    "fps": 1 / 60,  # 1 frame per minute
-    "magnification": 1,  # the magnification is already accounted for in the given voxel size
-    "pixel_size": 1.29,
-    "pixel_size_unit": "µm",
-    "image_size": 512,  # always assume square images; see preparation below
-    "chunksize": chunksize,
-    "overlap": overlap,
-    "fraction_total_lags": lag_pct,  # the fraction of total lags to use
-}
-
-
 def process_single_tiff(src: Path) -> None:
     """Process a single tiff file.
 
@@ -180,6 +154,32 @@ def process_single_tiff(src: Path) -> None:
     print(
         f":: processing duration for {src.name}: {perf_counter() - process_single_time:.2f} s."
     )
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "src", metavar="SRC", nargs="+", help="Location of TIFF file(s) to be processed."
+)
+
+args = parser.parse_args()
+
+chunksize = 200
+overlap = 100
+lag_pct = 0.6
+lags = np.arange(1, int(lag_pct * chunksize))
+
+notes_template = "chunk: {chunk}; normalized: {normalized}; windowed: {windowed}"
+
+metadata = {
+    "fps": 1 / 60,  # 1 frame per minute
+    "magnification": 1,  # the magnification is already accounted for in the given voxel size
+    "pixel_size": 1.29,
+    "pixel_size_unit": "µm",
+    "image_size": 512,  # always assume square images; see preparation below
+    "chunksize": chunksize,
+    "overlap": overlap,
+    "fraction_total_lags": lag_pct,  # the fraction of total lags to use
+}
 
 
 if __name__ == "__main__":
