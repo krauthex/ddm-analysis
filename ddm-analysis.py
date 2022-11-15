@@ -196,4 +196,7 @@ if __name__ == "__main__":
     for tiff in tiff_paths:
         process_single_tiff(tiff)
 
-    print(f"\n:: Overall processing took {perf_counter() - total_time_start:.2f} s.")
+    overall_time = perf_counter() - total_time_start
+    print(
+        f"\n:: Overall processing took {overall_time // 60} min {overall_time % 60:.2f} s."
+    )
