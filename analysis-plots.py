@@ -361,7 +361,7 @@ def analyse_single(
     time = lags / fps
 
     # representative u/q values (linspaced)
-    idx_range = (5, int(len(u) * 0.8))
+    idx_range = (7, int(len(u) * 0.8))
     test_wv_idc = np.linspace(
         *idx_range, num=6, dtype=np.int64, endpoint=False
     )  # test indices for u and q; use only the first half of q range, rest is very noisy
@@ -552,6 +552,7 @@ def analyse_single(
 
         print("::: Plotting power law ...")
         power_law_p0 = [1.0, 1.3]  # prefactor, exponent
+        power_law_boundaries = ([0, 0], [np.inf, 5])
         title_addendum = ""
 
         fig, ax = plt.subplots(figsize=(6, 4))
@@ -562,18 +563,37 @@ def analyse_single(
             ax.scatter(
                 fit_q, tau_m, c="k", marker="v", label=plot_labels["tau_moment_legend"]
             )
+
+            # find minimum until when to fit power law; consider differences in tau for this
+            min_idx = max(
+                np.argmin(np.abs(tau_m[:-1] - tau_m[1:])), np.argmin(np.abs(fit_q - 1))
+            )
+
             popt, pcov = curve_fit(
-                power_law, fit_q, tau_m, p0=power_law_p0
+                power_law,
+                fit_q[:min_idx],  # type: ignore
+                tau_m[:min_idx],  # type: ignore
+                p0=power_law_p0,
+                bounds=power_law_boundaries,
             )  # fit tau_m
             title_addendum = r"| $\beta = {:.2f}$".format(beta_avg)
         else:
-            popt, pcov = curve_fit(power_law, fit_q, tau, p0=power_law_p0)
+            # find minimum until when to fit power law
+            min_idx = np.argmin(np.abs(tau[:-1] - tau[1:]))
+
+            popt, pcov = curve_fit(
+                power_law,
+                fit_q[:min_idx],  # type: ignore
+                tau[:min_idx],  # type: ignore
+                p0=power_law_p0,
+                bounds=power_law_boundaries,
+            )
 
         popt_err = np.sqrt(np.diag(pcov))
         _, eta = popt
         ax.plot(
-            fit_q,
-            power_law(fit_q, *popt),
+            fit_q[:min_idx],  # type: ignore
+            power_law(fit_q[:min_idx], *popt),  # type: ignore
             c="tab:red",
             linestyle="--",
             label=plot_labels["power_law_legend"].format(eta=eta),
@@ -707,27 +727,58 @@ if __name__ == "__main__":
                     result_errs.append(errs)
 
     if len(result_pars):
-        print(":: Plotting scaling exponent evolution ... ")
-        eta = np.array(result_pars).T[1]
-        eta_err = np.array(result_errs).T[1]
+        print(":: Plotting power law evolution ... ")
+        result_pars = np.array(result_pars).T
+        result_errs = np.array(result_errs).T
+        amplitude, eta = result_pars
+        amplitude_err, eta_err = result_errs
         age = np.arange(len(eta))
 
-        fig, ax = plt.subplots(figsize=(6, 4))
+        fig, axes = plt.subplots(2, 1, figsize=(6, 6), sharex=True)
+        ax = axes[0]
         ax.errorbar(age, eta, eta_err, fmt=".", capthick=1, capsize=2, ecolor="tab:red")
 
         ax = decorate_axes(
             ax,
             xlabel="Age [chunk]",
             ylabel="Scaling exponent $\eta$",
-            title=r"{}| Scaling exponent $\eta$ evolution for $\tau \sim q^{{-\eta}}$".format(
+            title=r"{}| Scaling exponent $\eta$ evolution for $\tau = q^{{-\eta}}/v_0$".format(
                 exp_type
             ),
-            ylim=(0.9, 1.35),
+            ylim=(1.0, 2.0),
             grid_args=None,
             yscale="linear",
             xscale="linear",
+            legend=False,
         )
-        fig.savefig(plots / f"scaling-exponent-evo-{exp_type}.png")
+
+        ax = axes[1]
+        ax.errorbar(
+            age,
+            amplitude,
+            amplitude_err,
+            fmt=".",
+            capthick=1,
+            capsize=2,
+            ecolor="tab:red",
+        )
+
+        ax = decorate_axes(
+            ax,
+            xlabel="Age [chunk]",
+            ylabel="Amplitude $1/v_0$",
+            title=r"{}| Amplitude $1/v_0$ evolution for $\tau(q) = q^{{-\eta}}/v_0$".format(
+                exp_type
+            ),
+            grid_args=None,
+            yscale="linear",
+            xscale="linear",
+            legend=False,
+        )
+        fig.suptitle(
+            "Error bars from power law fit of the ensemble averaged data", fontsize=9
+        )
+        fig.savefig(plots / f"power-law-evo-{exp_type}.png")
 
     print(
         f":: Overall plotting & fitting took {perf_counter() - total_analysis_time: .2f} s"
