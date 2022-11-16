@@ -205,7 +205,7 @@ def plot_exp_fit_parameters(
         # fit parameter specific settings
         if i == 0:  # tau
             ax.set_yscale("log")
-            ax.set_ylim((3e2, 4e4))
+            ax.set_ylim((3e2, 6e4))
 
         elif i == 1:  # amplitude
             ax.set_ylim((0.6, 1.1))
@@ -361,7 +361,7 @@ def analyse_single(
     time = lags / fps
 
     # representative u/q values (linspaced)
-    idx_range = (5, int(len(u) * 0.7))
+    idx_range = (5, int(len(u) * 0.8))
     test_wv_idc = np.linspace(
         *idx_range, num=6, dtype=np.int64, endpoint=False
     )  # test indices for u and q; use only the first half of q range, rest is very noisy
@@ -513,7 +513,13 @@ def analyse_single(
             # redoing fits, overwriting old values
             for fu in fit_u:  # ignore the last value in default_p0
                 popt, pcov = curve_fit(
-                    exp_fixed_beta, time, isf[:, fu], p0=default_p0[:-1]
+                    exp_fixed_beta,
+                    time,
+                    isf[:, fu],
+                    p0=default_p0[:-1],
+                    bounds=(isf_fit_boundaries[0][:-1], isf_fit_boundaries[1][:-1]),
+                    sigma=weights,
+                    absolute_sigma=True,
                 )
                 fit_params[fu] = (popt, np.sqrt(np.diag(pcov)))
 
@@ -579,7 +585,7 @@ def analyse_single(
             ylabel=plot_labels["tau_axis"],
             title=f"Power law fit {title_addendum} | {binary_file_name}",
             grid_args={"which": "both"},
-            ylim=(3e2, 4e4),
+            ylim=(3e2, 6e4),
         )
         finalize_and_save(fig, plots / f"power-law-{exp_type}-{binary_file_name}")
 
