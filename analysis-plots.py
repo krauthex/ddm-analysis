@@ -195,13 +195,13 @@ def plot_exp_fit_parameters(
         # fit parameter specific settings
         if i == 0:  # tau
             ax.set_yscale("log")
-            ax.set_ylim((500, 1e4))
+            ax.set_ylim((3e2, 4e4))
 
         elif i == 1:  # amplitude
-            ax.set_ylim((0.6, 1.3))
+            ax.set_ylim((0.6, 1.1))
 
         elif i == 2:  # beta
-            ax.set_ylim((0.6, 2))
+            ax.set_ylim((0.55, 1.8))
             # also plot the first moment of tau in the right axis
             axes[0].scatter(
                 fit_q,
@@ -351,7 +351,7 @@ def analyse_single(
     time = lags / fps
 
     # representative u/q values (linspaced)
-    idx_range = (int(len(u) * 0.1), int(len(u) * 0.5))
+    idx_range = (5, int(len(u) * 0.7))
     test_wv_idc = np.linspace(
         *idx_range, num=6, dtype=np.int64, endpoint=False
     )  # test indices for u and q; use only the first half of q range, rest is very noisy
@@ -415,29 +415,49 @@ def analyse_single(
     fit_u = np.arange(*idx_range)
     fit_q = from_u_to_q(fit_u, metadata)
     fit_params = {}
+    weights = np.sqrt(lags) / np.max(lags)
 
     for fu in fit_u:
-        popt, pcov = curve_fit(general_exp, time, isf[:, fu], p0=default_p0)
+        popt, pcov = curve_fit(
+            general_exp,
+            time,
+            isf[:, fu],
+            p0=default_p0,
+            bounds=isf_fit_boundaries,
+            sigma=weights,
+            absolute_sigma=True,
+        )
         fit_params[fu] = (popt, np.sqrt(np.diag(pcov)))
 
     # plotting ISF with fits for test u/q values
     fig, ax = plt.subplots(figsize=(6, 6))
     for i, tu in enumerate(test_u):
-        ax.plot(
-            time, isf[:, tu], color=colors[i], label="$q = {:.3f}$".format(test_q[i])
+        # datapoints
+        ax.errorbar(
+            time,
+            isf[:, tu],
+            weights,
+            fmt=".",
+            markersize=3,
+            color=colors[i],
+            label="$q = {:.3f}$".format(test_q[i]),
+            capthick=0.5,
+            capsize=1,
+            elinewidth=0.5,
         )
 
+        # fit
         popt, _ = fit_params[tu]
         ax.plot(
             time,
             general_exp(time, *popt),
-            linestyle=":",
-            linewidth=0.8,
+            linestyle="--",
+            linewidth=1,
             color=colors[i],
         )
     ax = decorate_axes(
         ax,
-        xlabel=r"Lag times $t\ [s]$",
+        xlabel=r"Lag times $\Delta t\ [s]$",
         ylabel=r"Intermediate scattering function $f(q, \Delta t)$",
         title=f"ISF w/ {exp_type} fit | {binary_file_name} | {notes}",
         yscale="linear",
