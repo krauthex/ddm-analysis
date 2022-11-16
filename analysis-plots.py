@@ -14,7 +14,7 @@ from dfmtoolbox._dfm_python import (
     distance_array,
     reconstruct_full_spectrum,
 )
-from dfmtoolbox.io import read_data
+from dfmtoolbox.io import read_data, store_data
 from matplotlib.colors import TABLEAU_COLORS
 from scipy.optimize import curve_fit
 
@@ -31,6 +31,16 @@ class AnalysisBlob:
     metadata: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
     stardist_details: Optional[List[np.ndarray]] = None
+
+
+@dataclass
+class FitResults:
+    """Class for storing fit results for ISF and power law of tau."""
+
+    data_source: Union[Path, List[Path]]
+    isf: Optional[Dict[int, Tuple[np.ndarray, np.ndarray]]] = None
+    power_law: Optional[Tuple[np.ndarray, np.ndarray]] = None
+    notes: Optional[str] = None
 
 
 def general_exp(
@@ -411,7 +421,7 @@ def analyse_single(
     for i, avg in enumerate(azimuthal_avg):
         isf[i] = intermediate_scattering_function(avg, A, B)
 
-    # fitting exponential to all q values within prepared range
+    # fitting (stretched) exponential to all q values within prepared range
     fit_u = np.arange(*idx_range)
     fit_q = from_u_to_q(fit_u, metadata)
     fit_params = {}
@@ -428,6 +438,11 @@ def analyse_single(
             absolute_sigma=True,
         )
         fit_params[fu] = (popt, np.sqrt(np.diag(pcov)))
+
+    # store fit parameters
+    fit_results = FitResults(
+        data_source=src, isf=fit_params, notes=f"{notes}; {exp_type}"
+    )
 
     # plotting ISF with fits for test u/q values
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -564,11 +579,16 @@ def analyse_single(
             ylabel=plot_labels["tau_axis"],
             title=f"Power law fit {title_addendum} | {binary_file_name}",
             grid_args={"which": "both"},
-            ylim=(500, 1e4),
+            ylim=(3e2, 4e4),
         )
         finalize_and_save(fig, plots / f"power-law-{exp_type}-{binary_file_name}")
 
+        fit_results.power_law = (popt, popt_err)
+        store_data(fit_results, path=plots, name=f"fit-results-{binary_file_name}")
+
         return popt, popt_err
+
+    store_data(fit_results, path=plots, name=f"fit-results-{binary_file_name}")
 
     return None
 
