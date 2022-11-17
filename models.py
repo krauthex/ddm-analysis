@@ -77,7 +77,28 @@ def fit(
     verbose: bool = False,
     **fitargs: Any,
 ) -> lm.model.ModelResult:
+    """A wrapper for fitting a given model to given data.
 
+    It is highly recommended to pass the `weights` argument for very noisy data.
+
+    Parameters
+    ----------
+    model : lm.Model
+        The model to be used for the fit.
+    ydata : np.ndarray
+        The data we want to fit the model to.
+    xdata : np.ndarray
+        The data of the independent variable.
+    params : Optional[Union[lm.Parameters, lm.Parameter]], optional
+        Either a single lm.Parameter or lm.Parameters, as the Model expects, by default None
+    verbose : bool, optional
+        Pretty prints the parameters before fitting and the fit report afterwards, by default False
+
+    Returns
+    -------
+    lm.model.ModelResult
+        The results of the fit.
+    """
     if verbose:
         p = model.make_params() if params is None else params
         p.pretty_print()
@@ -88,5 +109,8 @@ def fit(
 
     # data for "x" should be in fitargs with the correct naming of the independent
     result = model.fit(ydata, params=params, **fitargs)
+
+    if verbose:
+        print(result.fit_report())
 
     return result
