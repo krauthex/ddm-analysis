@@ -1,5 +1,5 @@
 """A collection of helper tools for fitting."""
-from typing import Union, Optional, Dict, Any
+from typing import Union, Optional, Any
 
 import lmfit as lm
 import numpy as np
@@ -71,8 +71,8 @@ tau_model.set_param_hint("eta", min=0, max=np.inf)
 
 def fit(
     model: lm.Model,
-    ydata: np.ndarray,
     xdata: np.ndarray,
+    ydata: np.ndarray,
     params: Optional[Union[lm.Parameters, lm.Parameter]] = None,
     verbose: bool = False,
     **fitargs: Any,
@@ -85,10 +85,10 @@ def fit(
     ----------
     model : lm.Model
         The model to be used for the fit.
-    ydata : np.ndarray
-        The data we want to fit the model to.
     xdata : np.ndarray
         The data of the independent variable.
+    ydata : np.ndarray
+        The data we want to fit the model to.
     params : Optional[Union[lm.Parameters, lm.Parameter]], optional
         Either a single lm.Parameter or lm.Parameters, as the Model expects, by default None
     verbose : bool, optional
