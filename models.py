@@ -100,6 +100,7 @@ def fit(
         The results of the fit.
     """
     if verbose:
+        print(":: Model parameters:")
         p = model.make_params() if params is None else params
         p.pretty_print()
 
@@ -111,6 +112,7 @@ def fit(
     result = model.fit(ydata, params=params, **fitargs)
 
     if verbose:
+        print(":: Fit report:")
         print(result.fit_report())
 
     return result
