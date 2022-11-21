@@ -34,7 +34,9 @@ def general_exp(
 
 exp_model = lm.Model(general_exp)
 exp_model.set_param_hint("tau", min=0.0, max=np.inf)
-exp_model.set_param_hint("amp", min=0.0, max=1.0)
+exp_model.set_param_hint(
+    "amp", min=0.0, max=2.0
+)  # max value of 1 possibly causes artifacts
 exp_model.set_param_hint("beta", min=0.0, max=np.inf)
 
 
