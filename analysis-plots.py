@@ -18,99 +18,17 @@ from dfmtoolbox.io import read_data, store_data
 from matplotlib.colors import TABLEAU_COLORS
 from scipy.optimize import curve_fit
 
-from models import general_exp, power_law, tau_moment  # external script
-
-
-@dataclass
-class AnalysisBlob:
-    """Class for bundling analysis data with additional information."""
-
-    data_source: Path
-    rfft2: np.ndarray
-    lags: np.ndarray
-    image_structure_function: np.ndarray
-    azimuthal_average: Optional[np.ndarray] = None
-    metadata: Optional[Dict[str, Any]] = None
-    notes: Optional[str] = None
-    stardist_details: Optional[List[np.ndarray]] = None
-
-
-@dataclass
-class FitResults:
-    """Class for storing fit results for ISF and power law of tau."""
-
-    data_source: Union[Path, List[Path]]
-    isf: Optional[Dict[int, Tuple[np.ndarray, np.ndarray]]] = None
-    power_law: Optional[Tuple[np.ndarray, np.ndarray]] = None
-    notes: Optional[str] = None
-
-
-def static_estimate_A_B(rfft2: np.ndarray) -> Tuple[np.ndarray, float]:
-    """Estimate the values for A(q) and B from an average of the power spectra of ImageSet FFT2s.
-
-    The values for A(q) and B can be used to determine the shape of the ISF, since
-
-        D(q, dt) = A(q)[1 - ISF(q, dt)] + B
-
-    with D(q, dt) being the image structure function. The value of B is taken as the average of the
-    10 last values of two times the average power spectrum, and the sum of A and B is given by:
-
-        A + B = 2 * <|FFT2(I)|^2>
-    """
-
-    power_spec = np.abs(rfft2) ** 2  # numpy understands complex numbers
-    power_spec = np.array([reconstruct_full_spectrum(im) for im in power_spec])
-    power_spec = power_spec.mean(axis=0)
-    dist = distance_array(power_spec.shape)
-    a_plus_b = azimuthal_average(power_spec, dist)
-    a_plus_b *= 2
-
-    B = a_plus_b[-10:].mean()
-    A = a_plus_b - B
-
-    return A, B
-
-
-def from_u_to_q(u: np.ndarray, pars: Dict[str, Any]) -> np.ndarray:
-    """Calculate wave vectors `q` from pixel unit values `u`. Values of u are assumed to be
-    pixel counts of spatial frequencies.
-
-    The supplied `pars` dict has to define the values for magnification and pixel size
-    (i.e. physical size of one pixel), as well as image dimensions.
-
-    Returns the array of pixel unit values as wave vectors.
-    """
-    if pars is None:
-        raise RuntimeError("[ERR] Supplied parameters are non-existent.")
-
-    if "magnification" not in pars.keys():
-        pars["magnification"] = 1.0
-        raise RuntimeWarning(
-            "[WARN] Found no magnification, going to use magnification=1."
-        )
-
-    if "pixel_size" not in pars.keys():
-        pars["pixel_size"] = 1.0
-        raise RuntimeWarning(
-            "[WARN] Found no pixel size specification, going to use pixel_size=1."
-        )
-
-    if "image_size" not in pars.keys():
-        raise RuntimeError("[ERR] Supplied parameters don't contain image size.")
-
-    u_min = 1 / (pars["image_size"] * pars["pixel_size"] / pars["magnification"])
-    q_min = 2 * np.pi * u_min
-
-    return u * q_min
-
-
-def intermediate_scattering_function(
-    structure_function: np.ndarray, A: np.ndarray, B: float
-) -> np.ndarray:
-    """Return the intermediate scattering function."""
-    A_masked = np.ma.masked_equal(A, 0)  # masking 0 values for A
-
-    return 1 - (structure_function - B) / A_masked
+# external local modules
+from models import (
+    exp_model,
+    fit,
+    general_exp,  # external script
+    intermediate_scattering_function,
+    power_law,
+    tau_model,
+    tau_moment,
+)
+from utils import AnalysisBlob, FitResults, from_u_to_q, static_estimate_A_B
 
 
 def print_blob_info(blob: AnalysisBlob) -> None:

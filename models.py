@@ -118,3 +118,12 @@ def fit(
         print(result.fit_report())
 
     return result
+
+
+def intermediate_scattering_function(
+    structure_function: np.ndarray, A: np.ndarray, B: float
+) -> np.ndarray:
+    """Return the intermediate scattering function."""
+    A_masked = np.ma.masked_equal(A, 0)  # masking 0 values for A
+
+    return 1 - (structure_function - B) / A_masked
