@@ -2,11 +2,10 @@
 """Perform DDM analysis using dfmtoolbox on cell movies and store the results in a binary format."""
 
 import argparse
-from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Iterator, List, Tuple
 
 import numpy as np
 import tifffile
@@ -14,20 +13,7 @@ from dfmtoolbox._dfm_python import run
 from dfmtoolbox.io import store_data
 from dfmtoolbox.utils import tiff_to_numpy
 
-
-# preparations
-@dataclass
-class AnalysisBlob:
-    """Class for bundling analysis data with additional information."""
-
-    data_source: Path
-    rfft2: np.ndarray
-    lags: np.ndarray
-    image_structure_function: np.ndarray
-    azimuthal_average: Optional[np.ndarray] = None
-    metadata: Optional[Dict[str, Any]] = None
-    notes: Optional[str] = None
-    stardist_details: Optional[List[np.ndarray]] = None
+from utils import AnalysisBlob
 
 
 def get_fluorescence_tiff_paths(folder: Path) -> Iterator[Path]:
@@ -125,22 +111,25 @@ def process_single_tiff(src: Path) -> None:
         print(f":: [chunk={i}] Processing image range [{chunk[0]}-{chunk[-1]}]")
 
         data = tiff_to_numpy(src, seq=chunk)
+        """
         if y != x:
             square_dim = min(y, x)
             print(
                 f"::: dimensions not square, cropping to {square_dim}x{square_dim}..."
             )
             data = data[:, :square_dim, :square_dim]
-
+        """
         print("::: Performing analysis now ...")
-        rfft2, azimuthal_avg, dqt = run(data, lags, keep_full_structure=True)
+        rfft2_sqmod, azimuthal_avg, dqt = run(data, lags, keep_full_structure=True)
+        if rfft2_sqmod.dtype != np.float64:
+            rfft2_sqmod = rfft2_sqmod.astype(np.float64)
 
         print(f"::: Analysis took {perf_counter() - chunk_calc_time:.2f} s")
 
         print("::: Creating data structure ... ")
         blob = AnalysisBlob(
             data_source=src,
-            rfft2=rfft2,
+            rfft2_sqmod=rfft2_sqmod,
             lags=lags,
             image_structure_function=dqt,
             azimuthal_average=azimuthal_avg,

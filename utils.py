@@ -7,7 +7,7 @@ import numpy as np
 
 from dfmtoolbox._dfm_python import (
     reconstruct_full_spectrum,
-    distance_array,
+    spatial_frequency_grid,
     azimuthal_average,
 )
 
@@ -17,7 +17,7 @@ class AnalysisBlob:
     """Class for bundling analysis data with additional information."""
 
     data_source: Path
-    rfft2: np.ndarray
+    rfft2_sqmod: np.ndarray  # the square modulus of the rfft2
     lags: np.ndarray
     image_structure_function: np.ndarray
     azimuthal_average: Optional[np.ndarray] = None
@@ -36,7 +36,9 @@ class FitResults:
     notes: Optional[str] = None
 
 
-def static_estimate_A_B(rfft2: np.ndarray) -> Tuple[np.ndarray, float]:
+def static_estimate_A_B(
+    rfft2_sqmod: np.ndarray, shape: Optional[Tuple[int, ...]]
+) -> Tuple[np.ndarray, float]:
     """Estimate the values for A(q) and B from an average of the power spectra of ImageSet FFT2s.
 
     The values for A(q) and B can be used to determine the shape of the ISF, since
@@ -49,11 +51,11 @@ def static_estimate_A_B(rfft2: np.ndarray) -> Tuple[np.ndarray, float]:
         A + B = 2 * <|FFT2(I)|^2>
     """
 
-    power_spec = np.abs(rfft2) ** 2  # numpy understands complex numbers
-    power_spec = np.array([reconstruct_full_spectrum(im) for im in power_spec])
+    # power_spec = np.abs(rfft2) ** 2  # numpy understands complex numbers
+    power_spec = np.array([reconstruct_full_spectrum(im, shape) for im in rfft2_sqmod])
     power_spec = power_spec.mean(axis=0)
-    dist = distance_array(power_spec.shape)
-    a_plus_b = azimuthal_average(power_spec, dist)
+    # dist = spatial_frequency_grid() (power_spec.shape)
+    a_plus_b = azimuthal_average(power_spec)
     a_plus_b *= 2
 
     B = a_plus_b[-10:].mean()

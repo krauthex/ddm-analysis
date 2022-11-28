@@ -1,18 +1,17 @@
 #!/usr/bin/env python
 
 import argparse
-from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.fft as scifft
 from dfmtoolbox._dfm_python import (
     azimuthal_average,
-    distance_array,
-    reconstruct_full_spectrum,
+    spatial_frequency_grid,
 )
 from dfmtoolbox.io import read_data, store_data
 from matplotlib.colors import TABLEAU_COLORS
@@ -193,10 +192,19 @@ def analyse_single(
         dqt = np.array([blob.image_structure_function for blob in ensemble]).mean(
             axis=0
         )
-        rfft2 = np.array([blob.rfft2 for blob in ensemble])
+        rfft2_sqmod = np.array([blob.rfft2_sqmod for blob in ensemble])
 
-        dqt_dist = distance_array(dqt.shape)
-        azimuthal_avg = np.zeros((len(dqt), metadata["image_size"] // 2))
+        *_, ny, nx = dqt.shape
+        bigside = max(nx, ny)
+        kx = scifft.fftfreq(nx)
+        ky = scifft.fftfreq(ny)
+        spatial_freq = scifft.fftshift(
+            spatial_frequency_grid(kx, ky)
+        )  # equiv of old distance array
+        dqt_dist = spatial_freq  # distance_array(dqt.shape)
+        azimuthal_avg = np.zeros(
+            (len(dqt), bigside // 2)
+        )  # metadata["image_size"] // 2))
         for i in range(len(dqt)):
             azimuthal_avg[i] = azimuthal_average(dqt[i], dqt_dist)
 
@@ -208,11 +216,13 @@ def analyse_single(
         binary_file_name = src.name.replace(".pkl", "")  # type: ignore
         blob = read_data(src)
         print_blob_info(blob)
+        *_, ny, nx = blob.image_structure_function.shape
+        bigside = max(nx, ny)
 
         lags = blob.lags
         metadata = blob.metadata
         azimuthal_avg = blob.azimuthal_average
-        rfft2 = blob.rfft2
+        rfft2_sqmod = blob.rfft2_sqmod
         notes = blob.notes
 
     fps = metadata["fps"]
@@ -220,7 +230,7 @@ def analyse_single(
     unit = metadata["pixel_size_unit"]
 
     # convert pixel-u-values to q wave vectors
-    u = np.arange(1, metadata["image_size"] // 2 + 1)
+    u = np.arange(1, bigside // 2 + 1)
     q = from_u_to_q(u, metadata)
 
     # get representative dt values:
@@ -228,9 +238,9 @@ def analyse_single(
     time = lags / fps
 
     # representative u/q values (linspaced)
-    idx_range = (7, int(len(u) * 0.8))
-    test_wv_idc = np.linspace(
-        *idx_range, num=6, dtype=np.int64, endpoint=False
+    idx_range = (9, int(len(u) * 0.8))
+    test_wv_idc = (
+        np.linspace(*idx_range, num=6, dtype=np.int64, endpoint=False) - 1
     )  # test indices for u and q; use only the first half of q range, rest is very noisy
     test_u = u[test_wv_idc]  # get some test u values
     test_q = q[test_wv_idc]
@@ -239,7 +249,7 @@ def analyse_single(
     print("::: plotting azimuthal average for some test-lags .. ")
     fig, ax = plt.subplots(figsize=(6, 6))
     for testlag in test_lags:
-        ax.plot(q, azimuthal_avg[testlag], label=r"$\Delta t={}$".format(testlag))
+        ax.plot(q, azimuthal_avg[testlag - 1], label=r"$\Delta t={}$".format(testlag))
 
     ax = decorate_axes(
         ax,
@@ -255,20 +265,20 @@ def analyse_single(
     print("::: plotting A(q), B ...")
     if ensemble_average:
         As, Bs = np.array([0.0]), 0.0
-        for fov in rfft2:  # iterate over all fields of view
-            _A, _B = static_estimate_A_B(fov)
+        for fov in rfft2_sqmod:  # iterate over all fields of view
+            _A, _B = static_estimate_A_B(fov, (ny, nx))
             As = _A + As  # shorthand notation doesn't work
             Bs += _B
-        A = As / len(rfft2)  # normalization
-        B = Bs / len(rfft2)
-        del As, Bs, _A, _B, rfft2
+        A = As / len(rfft2_sqmod)  # normalization
+        B = Bs / len(rfft2_sqmod)
+        del As, Bs, _A, _B, rfft2_sqmod
 
     else:
-        A, B = static_estimate_A_B(rfft2)
+        A, B = static_estimate_A_B(rfft2_sqmod, (ny, nx))
 
     fig, ax = plt.subplots(figsize=(6, 6))
-    ax.plot(q, A, label=r"$A(q)$")
-    ax.hlines(B, q[0], q[-1], linestyle="--", colors="k", label=r"$B={:.2f}$".format(B))
+    ax.plot(q[1:], A[1:], label=r"$A(q)$")
+    ax.hlines(B, q[1], q[-1], linestyle="--", colors="k", label=r"$B={:.2f}$".format(B))
 
     ax = decorate_axes(
         ax,
@@ -292,10 +302,14 @@ def analyse_single(
     fit_u = np.arange(*idx_range)
     fit_q = from_u_to_q(fit_u, metadata)
     fit_params = {}
-    weights = np.sqrt(lags) / np.max(lags)
+    # weights = np.sqrt(lags) / np.max(lags)
+    weights = np.sqrt(lags.max() / lags)
+    # print(weights)
+    # weights = np.ones(len(lags))
 
+    # for fu in fit_u:
     for fu in fit_u:
-        popt, pcov = curve_fit(
+        """popt, pcov = curve_fit(
             general_exp,
             time,
             isf[:, fu],
@@ -304,7 +318,17 @@ def analyse_single(
             sigma=weights,
             absolute_sigma=True,
         )
-        fit_params[fu] = (popt, np.sqrt(np.diag(pcov)))
+        """
+        result = fit(exp_model, xdata=time, ydata=isf[:, fu], weights=weights)
+        if not result.success:
+            # retry fit
+            print(f"    --> retrying fit for u={fu} with different weights.. ")
+            result = fit(exp_model, xdata=time, ydata=isf[:, fu], weights=1 / lags)
+
+        # print(result.fit_report())
+        popt = result.best_values
+        perr = np.sqrt(np.diag(result.covar)) if result.covar is not None else None
+        fit_params[fu] = (popt, perr)
 
     # store fit parameters
     fit_results = FitResults(
@@ -315,7 +339,14 @@ def analyse_single(
     fig, ax = plt.subplots(figsize=(6, 6))
     for i, tu in enumerate(test_u):
         # datapoints
-        ax.errorbar(
+        ax.scatter(
+            time,
+            isf[:, tu],
+            s=3,
+            color=colors[i],
+            label="$q = {:.3f}$".format(test_q[i]),
+        )
+        """ ax.errorbar(
             time,
             isf[:, tu],
             weights,
@@ -326,13 +357,14 @@ def analyse_single(
             capthick=0.5,
             capsize=1,
             elinewidth=0.5,
-        )
+        ) """
 
         # fit
         popt, _ = fit_params[tu]
         ax.plot(
             time,
-            general_exp(time, *popt),
+            # general_exp(time, *popt),
+            exp_model.eval(t=time, **popt),
             linestyle="--",
             linewidth=1,
             color=colors[i],
@@ -382,7 +414,7 @@ def analyse_single(
                 popt, pcov = curve_fit(
                     exp_fixed_beta,
                     time,
-                    isf[:, fu],
+                    isf[:, fu],  # TODO: check if index fu is correct here
                     p0=default_p0[:-1],
                     bounds=(isf_fit_boundaries[0][:-1], isf_fit_boundaries[1][:-1]),
                     sigma=weights,
@@ -519,17 +551,24 @@ args = parser.parse_args()
 stretched_exp = args.fit_stretched_exp
 exp_type = "stretched-exp" if stretched_exp else "exp"
 default_p0 = [1e3, 1.0, 1.0] if stretched_exp else [1e3, 1.0]
+
+# set initial guess for tau
+exp_model.set_param_hint("tau", value=1e3)
+
 # bounds2-tuple of array_like, optional
 if stretched_exp:
     isf_fit_boundaries = (  # tau, amplitude, beta
         [0, 0, 0],  # lower bounds for all parameters
         [np.inf, 1, 10],  # upper bounds
     )
+
 else:
     isf_fit_boundaries = (  # tau, amplitude
         [0, 0],  # lower bounds for all parameters
         [np.inf, 1],  # upper bounds
     )
+    exp_model.set_param_hint("beta", vary=False)  # set beta to be a constant
+
 fit_parameter_labels = [
     r"$\tau(q)\ [s]$",
     "amplitude of exponential",
