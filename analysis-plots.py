@@ -20,6 +20,7 @@ from scipy.optimize import curve_fit
 # external local modules
 from models import (
     exp_model,
+    extract_results,
     fit,
     general_exp,  # external script
     intermediate_scattering_function,
@@ -302,10 +303,7 @@ def analyse_single(
     fit_u = np.arange(*idx_range)
     fit_q = from_u_to_q(fit_u, metadata)
     fit_params = {}
-    # weights = np.sqrt(lags) / np.max(lags)
     weights = np.sqrt(lags.max() / lags)
-    # print(weights)
-    # weights = np.ones(len(lags))
 
     # for fu in fit_u:
     for fu in fit_u:
@@ -325,10 +323,8 @@ def analyse_single(
             print(f"    --> retrying fit for u={fu} with different weights.. ")
             result = fit(exp_model, xdata=time, ydata=isf[:, fu], weights=1 / lags)
 
-        # print(result.fit_report())
-        popt = result.best_values
-        perr = np.sqrt(np.diag(result.covar)) if result.covar is not None else None
-        fit_params[fu] = (popt, perr)
+        # popt, perr, uncertainty_band = extract_results(result)
+        fit_params[fu] = extract_results(result)  # (popt, perr, uncertainty_band)
 
     # store fit parameters
     fit_results = FitResults(
@@ -360,7 +356,7 @@ def analyse_single(
         ) """
 
         # fit
-        popt, _ = fit_params[tu]
+        popt, _, uncertainty_band = fit_params[tu]
         ax.plot(
             time,
             # general_exp(time, *popt),
@@ -369,6 +365,8 @@ def analyse_single(
             linewidth=1,
             color=colors[i],
         )
+        ax.fill_between(time, *uncertainty_band, color=colors[i], alpha=0.5)
+
     ax = decorate_axes(
         ax,
         xlabel=r"Lag times $\Delta t\ [s]$",

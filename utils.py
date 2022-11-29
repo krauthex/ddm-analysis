@@ -31,7 +31,7 @@ class FitResults:
     """Class for storing fit results for ISF and power law of tau."""
 
     data_source: Union[Path, List[Path]]
-    isf: Optional[Dict[int, Tuple[np.ndarray, np.ndarray]]] = None
+    isf: Optional[Dict[int, Tuple[np.ndarray, np.ndarray, List[Any]]]] = None
     power_law: Optional[Tuple[np.ndarray, np.ndarray]] = None
     notes: Optional[str] = None
 
@@ -50,17 +50,14 @@ def static_estimate_A_B(
 
         A + B = 2 * <|FFT2(I)|^2>
     """
-
-    # power_spec = np.abs(rfft2) ** 2  # numpy understands complex numbers
+    # assume we already receive the square modulus of the rfft2
     power_spec = np.array([reconstruct_full_spectrum(im, shape) for im in rfft2_sqmod])
     power_spec = power_spec.mean(axis=0)
-    # dist = spatial_frequency_grid() (power_spec.shape)
     a_plus_b = azimuthal_average(power_spec)
     a_plus_b *= 2
 
     B = a_plus_b[-10:].mean()
     A = a_plus_b - B
-
     return A, B
 
 

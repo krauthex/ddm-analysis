@@ -1,5 +1,5 @@
 """A collection of helper tools for fitting."""
-from typing import Union, Optional, Any
+from typing import Union, Optional, Any, Tuple, List
 
 import lmfit as lm
 import numpy as np
@@ -127,3 +127,34 @@ def intermediate_scattering_function(
     A_masked = np.ma.masked_equal(A, 0)  # masking 0 values for A
 
     return 1 - (structure_function - B) / A_masked
+
+
+def extract_results(
+    result: lm.model.ModelResult, sigma: int = 3, verbose: bool = False
+) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
+    """Extract properties of the lm.ModelResult like optimal parameters, parameter errors and
+    uncertainty bands.
+
+    Parameters
+    ----------
+    result : lm.ModelResult
+        The result of a fit.
+    sigma : int, optional
+        Sigma level for the uncertainty bands, by default 3
+    verbose : bool, optional
+        If true, print the fit report, by default False
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray, List[np.ndarray]]
+        Optimal parameters, parameter errors and the uncertainty band (lower band, upper band)
+    """
+    if verbose:
+        print(result.fit_report())
+
+    popt = result.best_values
+    perr = np.sqrt(np.diag(result.covar)) if result.covar is not None else None
+    delta_y = result.eval_uncertainty(sigma=sigma)
+    uncertainty_band = [result.best_fit - delta_y, result.best_fit + delta_y]
+
+    return popt, perr, uncertainty_band
