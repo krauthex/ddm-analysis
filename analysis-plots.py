@@ -4,7 +4,7 @@ import argparse
 from functools import partial
 from pathlib import Path
 from time import perf_counter
-from typing import Dict, List, Optional, Tuple, Union, Iterable
+from typing import Dict, List, Optional, Tuple, Union, Iterable, Any
 
 import lmfit as lm
 import matplotlib.pyplot as plt
@@ -48,20 +48,16 @@ def print_blob_info(blob: AnalysisBlob) -> None:
 
 
 def plot_exp_fit_parameters(
-    parameters: List[Dict[str, float]],
+    parameters: Dict[str, np.ndarray],
     fit_q: np.ndarray,
     colors: List[str],
     fit_parameter_labels: List[str],
     xunit: str,
 ) -> Tuple[plt.Figure, plt.Axes]:
 
-    size = len(parameters)
-    pnames = list(parameters[0].keys())
+    # size = len(parameters)
+    pnames = list(parameters.keys())
     nparameters = len(pnames)
-    pars = {key: np.zeros(size) for key in pnames}
-    for i, pdict in enumerate(parameters):
-        for pname, value in pdict.items():
-            pars[pname][i] = value
 
     fig, axes = plt.subplots(
         nparameters, 1, figsize=(6, 2.5 * nparameters), sharex=True
@@ -69,7 +65,7 @@ def plot_exp_fit_parameters(
 
     for i, pname in enumerate(pnames):
         ax = axes[i]
-        par = pars[pname]
+        par = parameters[pname]
         ax.scatter(fit_q, par, c=colors[i], s=20)
         ax.set_ylabel(fit_parameter_labels[i])
         ax.grid(which="both")
@@ -88,7 +84,7 @@ def plot_exp_fit_parameters(
             # also plot the first moment of tau in the right axis
             axes[0].scatter(
                 fit_q,
-                tau_moment(pars["tau"], par),
+                tau_moment(parameters["tau"], par),
                 c="k",
                 marker="v",
                 label=r"$\langle \tau(q) \rangle$",
@@ -205,6 +201,34 @@ def fit_isf(
         fit_params[fu] = extract_results(result)
 
     return fit_params
+
+
+def transpose_extracted_results(
+    fit_params: Dict[int, ExtractedResult]
+) -> Dict[str, Any]:
+
+    parameters, param_errors, uncertainty_bands = [], [], []
+    fit_u = list(fit_params.keys())
+    for (par, perr, uncert) in fit_params.values():
+        parameters.append(par)
+        param_errors.append(perr)
+        uncertainty_bands.append(uncert)
+
+    size = len(parameters)
+    pnames = list(parameters[0].keys())
+
+    pars = {key: np.zeros(size) for key in pnames}
+    for i, pdict in enumerate(parameters):
+        for pname, value in pdict.items():
+            pars[pname][i] = value
+
+    transposed = {
+        "u": fit_u,
+        "parameters": pars,
+        "param_errors": param_errors,
+        "uncertainty_bands": uncertainty_bands,
+    }
+    return transposed
 
 
 def analyse_single(
@@ -399,7 +423,8 @@ def analyse_single(
     # plotting fit results ########################################################################
     print("::: Fit results ...")
 
-    parameters = [item[0] for item in fit_params.values()]
+    transposed_results = transpose_extracted_results(fit_params)
+    parameters = transposed_results["parameters"]
 
     fig, _ = plot_exp_fit_parameters(
         parameters, fit_q, colors, fit_parameter_labels, unit
@@ -418,9 +443,8 @@ def analyse_single(
                 "    --> Used stretching exponent; averaging beta(q), then redoing exp fits with "
                 "fixed beta."
             )
-            beta_ts = np.array([item["beta"] for item in parameters])
-            beta_avg, beta_std = beta_ts.mean(), beta_ts.std()
-            beta_std_err = beta_std / np.sqrt(len(beta_ts))
+            beta_avg, beta_std = parameters["beta"].mean(), parameters["beta"].std()
+            beta_std_err = beta_std / np.sqrt(len(parameters["beta"]))
 
             print(f"    -->〈β(q)〉= {beta_avg:.2f}, std_err(β(q)) = {beta_std_err:.2f}")
 
@@ -434,18 +458,17 @@ def analyse_single(
             )
 
             # extract parameters list of dicts
-            parameters = [item[0] for item in fit_params.values()]
+            transposed_results = transpose_extracted_results(fit_params)
+            parameters = transposed_results["parameters"]
             # reduce to tau and amplitude, since beta is constant
-            parameters = [
-                {"tau": item["tau"], "amp": item["amp"]} for item in parameters
-            ]
+            del parameters["beta"]
 
             print("    --> Plotting exponential fit parameters of redone fits...")
             fig, axes = plot_exp_fit_parameters(
                 parameters, fit_q, colors, fit_parameter_labels, unit
             )
             # manually plot the first moment as well
-            tau_m = tau_moment([item["tau"] for item in parameters], beta_avg)
+            tau_m = tau_moment(parameters["tau"], beta_avg)
             axes[0].scatter(
                 fit_q,
                 tau_m,
@@ -470,7 +493,7 @@ def analyse_single(
 
         fig, ax = plt.subplots(figsize=(6, 4))
         # first plot tau(q)
-        tau = parameters[0]
+        tau = parameters["tau"]
         ax.scatter(fit_q, tau, s=20)
         if stretched_exp:
             ax.scatter(
