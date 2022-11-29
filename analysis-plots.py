@@ -9,20 +9,17 @@ from typing import Dict, List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fft as scifft
-from dfmtoolbox._dfm_python import (
-    azimuthal_average,
-    spatial_frequency_grid,
-)
+from dfmtoolbox._dfm_python import azimuthal_average, spatial_frequency_grid
 from dfmtoolbox.io import read_data, store_data
 from matplotlib.colors import TABLEAU_COLORS
 from scipy.optimize import curve_fit
 
 # external local modules
+from models import general_exp  # external script
 from models import (
     exp_model,
     extract_results,
     fit,
-    general_exp,  # external script
     intermediate_scattering_function,
     power_law,
     tau_model,
@@ -367,11 +364,6 @@ def analyse_single(
     print("::: Fit results ...")
 
     parameters = [item[0] for item in fit_params.values()]
-    # parameters = np.array(
-    #     [item[0] for item in fit_params.values()]
-    # )  # extracting parameters
-    # print(parameters[0], type(parameters[0]))
-    # parameters = parameters.T
 
     fig, _ = plot_exp_fit_parameters(
         parameters, fit_q, colors, fit_parameter_labels, unit

@@ -1,5 +1,5 @@
 """A collection of helper tools for fitting."""
-from typing import Union, Optional, Any, Tuple, List
+from typing import Union, Optional, Any, Tuple, List, Dict
 
 import lmfit as lm
 import numpy as np
@@ -133,7 +133,7 @@ def intermediate_scattering_function(
 
 def extract_results(
     result: lm.model.ModelResult, sigma: int = 3, verbose: bool = False
-) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
+) -> Tuple[Dict[str, float], np.ndarray, List[np.ndarray]]:
     """Extract properties of the lm.ModelResult like optimal parameters, parameter errors and
     uncertainty bands.
 
