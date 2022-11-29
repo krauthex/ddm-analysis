@@ -40,7 +40,9 @@ exp_model.set_param_hint(
 exp_model.set_param_hint("beta", min=0.0, max=np.inf)
 
 
-def tau_moment(tau: float, beta: float) -> float:
+def tau_moment(
+    tau: Union[float, np.ndarray], beta: Union[float, np.ndarray]
+) -> Union[float, np.ndarray]:
     """Calculate the first moment of the stretched exponential function."""
 
     return tau / beta * gamma(1 / beta)

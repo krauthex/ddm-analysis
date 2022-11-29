@@ -48,41 +48,47 @@ def print_blob_info(blob: AnalysisBlob) -> None:
 
 
 def plot_exp_fit_parameters(
-    parameters: np.ndarray,
+    parameters: List[Dict[str, float]],
     fit_q: np.ndarray,
     colors: List[str],
     fit_parameter_labels: List[str],
     xunit: str,
 ) -> Tuple[plt.Figure, plt.Axes]:
 
-    nparameters = len(parameters)
+    size = len(parameters)
+    pnames = list(parameters[0].keys())
+    nparameters = len(pnames)
+    pars = {key: np.zeros(size) for key in pnames}
+    for i, pdict in enumerate(parameters):
+        for pname, value in pdict.items():
+            pars[pname][i] = value
 
     fig, axes = plt.subplots(
         nparameters, 1, figsize=(6, 2.5 * nparameters), sharex=True
     )
 
-    for i in range(nparameters):
+    for i, pname in enumerate(pnames):
         ax = axes[i]
-        par = parameters[i]
+        par = pars[pname]
         ax.scatter(fit_q, par, c=colors[i], s=20)
         ax.set_ylabel(fit_parameter_labels[i])
         ax.grid(which="both")
         ax.set_xscale("log")
 
         # fit parameter specific settings
-        if i == 0:  # tau
+        if pname == "tau":  # tau
             ax.set_yscale("log")
-            ax.set_ylim((3e2, 6e4))
+            ax.set_ylim((1e2, 6e4))
 
-        elif i == 1:  # amplitude
-            ax.set_ylim((0.6, 1.1))
+        elif pname == "amp":  # amplitude
+            ax.set_ylim((0.6, 1.2))
 
-        elif i == 2:  # beta
-            ax.set_ylim((0.55, 1.8))
+        elif pname == "beta":  # beta
+            ax.set_ylim((0.2, 1.9))
             # also plot the first moment of tau in the right axis
             axes[0].scatter(
                 fit_q,
-                tau_moment(parameters[0], par),
+                tau_moment(pars["tau"], par),
                 c="k",
                 marker="v",
                 label=r"$\langle \tau(q) \rangle$",
@@ -307,16 +313,6 @@ def analyse_single(
 
     # for fu in fit_u:
     for fu in fit_u:
-        """popt, pcov = curve_fit(
-            general_exp,
-            time,
-            isf[:, fu],
-            p0=default_p0,
-            bounds=isf_fit_boundaries,
-            sigma=weights,
-            absolute_sigma=True,
-        )
-        """
         result = fit(exp_model, xdata=time, ydata=isf[:, fu], weights=weights)
         if not result.success:
             # retry fit
@@ -342,18 +338,6 @@ def analyse_single(
             color=colors[i],
             label="$q = {:.3f}$".format(test_q[i]),
         )
-        """ ax.errorbar(
-            time,
-            isf[:, tu],
-            weights,
-            fmt=".",
-            markersize=3,
-            color=colors[i],
-            label="$q = {:.3f}$".format(test_q[i]),
-            capthick=0.5,
-            capsize=1,
-            elinewidth=0.5,
-        ) """
 
         # fit
         popt, _, uncertainty_band = fit_params[tu]
@@ -365,6 +349,7 @@ def analyse_single(
             linewidth=1,
             color=colors[i],
         )
+        # uncertainty band
         ax.fill_between(time, *uncertainty_band, color=colors[i], alpha=0.5)
 
     ax = decorate_axes(
@@ -381,10 +366,12 @@ def analyse_single(
     # plotting fit results ########################################################################
     print("::: Fit results ...")
 
-    parameters = np.array(
-        [item[0] for item in fit_params.values()]
-    )  # extracting parameters
-    parameters = parameters.T
+    parameters = [item[0] for item in fit_params.values()]
+    # parameters = np.array(
+    #     [item[0] for item in fit_params.values()]
+    # )  # extracting parameters
+    # print(parameters[0], type(parameters[0]))
+    # parameters = parameters.T
 
     fig, _ = plot_exp_fit_parameters(
         parameters, fit_q, colors, fit_parameter_labels, unit
