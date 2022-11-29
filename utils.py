@@ -31,7 +31,7 @@ class FitResults:
     """Class for storing fit results for ISF and power law of tau."""
 
     data_source: Union[Path, List[Path]]
-    isf: Optional[Dict[int, Tuple[np.ndarray, np.ndarray, List[Any]]]] = None
+    isf: Optional[Dict[int, Tuple[Dict[str, float], np.ndarray, List[Any]]]] = None
     power_law: Optional[Tuple[np.ndarray, np.ndarray]] = None
     notes: Optional[str] = None
 

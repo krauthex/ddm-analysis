@@ -4,8 +4,9 @@ import argparse
 from functools import partial
 from pathlib import Path
 from time import perf_counter
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Iterable
 
+import lmfit as lm
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fft as scifft
@@ -21,9 +22,11 @@ from models import (
     extract_results,
     fit,
     intermediate_scattering_function,
+    model_generator,
     power_law,
     tau_model,
     tau_moment,
+    ExtractedResult,
 )
 from utils import AnalysisBlob, FitResults, from_u_to_q, static_estimate_A_B
 
@@ -163,6 +166,45 @@ def finalize_and_save(fig: plt.Figure, figname: Path, dpi: int = 150) -> None:
 
     fig.savefig(figname, dpi=dpi)
     plt.close(fig)
+
+
+def fit_isf(
+    model: lm.Model,
+    fit_u: Iterable[int],
+    *,
+    ydata: np.ndarray,
+    alt_weights: Optional[np.ndarray] = None,
+    **kwargs,
+) -> Dict[int, ExtractedResult]:
+    """Fit the intermediate scattering function with the given model in a given range of u values.
+
+    Parameters
+    ----------
+    model : lm.Model
+        The lmfit model instance used for fitting
+    fit_u : Iterable[int]
+        The iterable of u values the fit should be produced for.
+    ydata : np.ndarray
+        The 2D data we want to fit the model to; the last axis will be used for iteration.
+    alt_weights: Optional[np.ndarray]
+        Alternative weights if fit fails at first try, by default None
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    fit_params = {}
+    for fu in fit_u:
+        result = fit(model, ydata=ydata[:, fu], **kwargs)
+        if not result.success and alt_weights is not None:
+            print(f"    --> retrying fit for u={fu} with different weights.. ")
+            kwargs["weights"] = alt_weights
+            result = fit(model, ydata=ydata[:, fu], **kwargs)
+
+        fit_params[fu] = extract_results(result)
+
+    return fit_params
 
 
 def analyse_single(
@@ -308,16 +350,10 @@ def analyse_single(
     fit_params = {}
     weights = np.sqrt(lags.max() / lags)
 
-    # for fu in fit_u:
-    for fu in fit_u:
-        result = fit(exp_model, xdata=time, ydata=isf[:, fu], weights=weights)
-        if not result.success:
-            # retry fit
-            print(f"    --> retrying fit for u={fu} with different weights.. ")
-            result = fit(exp_model, xdata=time, ydata=isf[:, fu], weights=1 / lags)
-
-        # popt, perr, uncertainty_band = extract_results(result)
-        fit_params[fu] = extract_results(result)  # (popt, perr, uncertainty_band)
+    # fitting
+    fit_params = fit_isf(
+        exp_model, fit_u, ydata=isf, xdata=time, weights=weights, alt_weights=1 / lags
+    )
 
     # store fit parameters
     fit_results = FitResults(
@@ -382,33 +418,34 @@ def analyse_single(
                 "    --> Used stretching exponent; averaging beta(q), then redoing exp fits with "
                 "fixed beta."
             )
-            beta_avg, beta_std = parameters[2].mean(), parameters[2].std()
-            print(f"    -->〈β(q)〉= {beta_avg:.2f}, std(β(q)) = {beta_std:.2f}")
-            exp_fixed_beta = partial(general_exp, beta=beta_avg)
+            beta_ts = np.array([item["beta"] for item in parameters])
+            beta_avg, beta_std = beta_ts.mean(), beta_ts.std()
+            beta_std_err = beta_std / np.sqrt(len(beta_ts))
+
+            print(f"    -->〈β(q)〉= {beta_avg:.2f}, std_err(β(q)) = {beta_std_err:.2f}")
+
+            # exp_fixed_beta = partial(general_exp, beta=beta_avg)
+            exp_fixed_beta = model_generator("exp")
+            exp_fixed_beta.set_param_hint("beta", value=beta_avg, vary=False)
 
             # redoing fits, overwriting old values
-            for fu in fit_u:  # ignore the last value in default_p0
-                popt, pcov = curve_fit(
-                    exp_fixed_beta,
-                    time,
-                    isf[:, fu],  # TODO: check if index fu is correct here
-                    p0=default_p0[:-1],
-                    bounds=(isf_fit_boundaries[0][:-1], isf_fit_boundaries[1][:-1]),
-                    sigma=weights,
-                    absolute_sigma=True,
-                )
-                fit_params[fu] = (popt, np.sqrt(np.diag(pcov)))
+            fit_params = fit_isf(
+                exp_fixed_beta, fit_u, ydata=isf, xdata=time, weights=weights
+            )
 
-            # extract parameters array
-            parameters = np.array([item[0] for item in fit_params.values()])
-            parameters = parameters.T
+            # extract parameters list of dicts
+            parameters = [item[0] for item in fit_params.values()]
+            # reduce to tau and amplitude, since beta is constant
+            parameters = [
+                {"tau": item["tau"], "amp": item["amp"]} for item in parameters
+            ]
 
             print("    --> Plotting exponential fit parameters of redone fits...")
             fig, axes = plot_exp_fit_parameters(
                 parameters, fit_q, colors, fit_parameter_labels, unit
             )
             # manually plot the first moment as well
-            tau_m = tau_moment(parameters[0], beta_avg)
+            tau_m = tau_moment([item["tau"] for item in parameters], beta_avg)
             axes[0].scatter(
                 fit_q,
                 tau_m,

@@ -1,5 +1,5 @@
 """A collection of helper tools for fitting."""
-from typing import Union, Optional, Any, Tuple, List, Dict
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import lmfit as lm
 import numpy as np
@@ -73,6 +73,43 @@ tau_model.set_param_hint("a", min=0, max=np.inf)
 tau_model.set_param_hint("eta", min=0, max=np.inf)
 
 
+def model_generator(kind: str) -> lm.Model:
+    """Generate a fresh model of the given kind with default values.
+
+    Parameters
+    ----------
+    kind : str
+        A string identifier for the implemented models
+
+    Returns
+    -------
+    lm.Model
+        A new instance of the lmfit Model class for the given model kind.
+
+    Raises
+    ------
+    RuntimeError
+        If the model identifier given is not in the list of possible model kinds.
+    """
+    models = {"exp": general_exp, "tau_moment": tau_moment, "tau": power_law}
+    hints = {
+        "exp": exp_model.param_hints,
+        "tau_moment": tau_model.param_hints,
+        "tau": tau_model.param_hints,
+    }
+
+    if kind not in models.keys():
+        raise RuntimeError(
+            f"Chosen model {kind} is not a valid. Possible choices are "
+            f"{list(models.keys())}."
+        )
+    model = lm.Model(models[kind])
+    for param, paramhint in hints[kind].items():
+        model.set_param_hint(param, **paramhint)
+
+    return model
+
+
 def fit(
     model: lm.Model,
     xdata: np.ndarray,
@@ -131,9 +168,12 @@ def intermediate_scattering_function(
     return 1 - (structure_function - B) / A_masked
 
 
+ExtractedResult = Tuple[Dict[str, float], np.ndarray, List[np.ndarray]]
+
+
 def extract_results(
     result: lm.model.ModelResult, sigma: int = 3, verbose: bool = False
-) -> Tuple[Dict[str, float], np.ndarray, List[np.ndarray]]:
+) -> ExtractedResult:
     """Extract properties of the lm.ModelResult like optimal parameters, parameter errors and
     uncertainty bands.
 
