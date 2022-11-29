@@ -233,6 +233,22 @@ def transpose_extracted_results(
     return transposed
 
 
+def find_tau_fit_range(tau: np.ndarray, fit_q: np.ndarray) -> Tuple[int, int]:
+    # tau can be tau or tau_m
+    # the value of maximum tau is given by chunksize / fps
+    # for now hardcoded
+    max_tau_val = 200 * 60  # 200 / (1 / 60)
+    (idx,) = np.where(tau <= max_tau_val)
+    left_idx = idx.min()
+
+    right_idx = max(
+        np.argmin(np.abs(tau[:-1] - tau[1:])),
+        np.argmin(np.abs(fit_q - 1)),
+    )
+
+    return int(left_idx), int(right_idx)
+
+
 def analyse_single(
     src: Union[Path, List[Path]], plots: Path, ensemble_average: bool = False
 ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
@@ -489,8 +505,6 @@ def analyse_single(
             )
 
         print("::: Plotting power law ...")
-        power_law_p0 = [1.0, 1.3]  # prefactor, exponent
-        power_law_boundaries = ([0, 0], [np.inf, 5])
         title_addendum = ""
 
         fig, ax = plt.subplots(figsize=(6, 4))
@@ -501,41 +515,25 @@ def analyse_single(
             ax.scatter(
                 fit_q, tau_m, c="k", marker="v", label=plot_labels["tau_moment_legend"]
             )
-
-            # find minimum until when to fit power law; consider differences in tau for this
-            min_idx = max(
-                np.argmin(np.abs(tau_m[:-1] - tau_m[1:])), np.argmin(np.abs(fit_q - 1))
-            )
-
-            popt, pcov = curve_fit(
-                power_law,
-                fit_q[:min_idx],  # type: ignore
-                tau_m[:min_idx],  # type: ignore
-                p0=power_law_p0,
-                bounds=power_law_boundaries,
-            )  # fit tau_m
             title_addendum = r"| $\beta = {:.2f}$".format(beta_avg)
+
+            left, right = find_tau_fit_range(tau_m, fit_q)
+
         else:
-            # find minimum until when to fit power law
-            min_idx = np.argmin(np.abs(tau[:-1] - tau[1:]))
+            left, right = find_tau_fit_range(tau, fit_q)
 
-            popt, pcov = curve_fit(
-                power_law,
-                fit_q[:min_idx],  # type: ignore
-                tau[:min_idx],  # type: ignore
-                p0=power_law_p0,
-                bounds=power_law_boundaries,
-            )
+        tau_fit_q = fit_q[left:right]
+        result = fit(tau_model, xdata=tau_fit_q, ydata=tau_m[left:right])
+        popt, popt_err, uncertainty_band = extract_results(result)
 
-        popt_err = np.sqrt(np.diag(pcov))
-        _, eta = popt
         ax.plot(
-            fit_q[:min_idx],  # type: ignore
-            power_law(fit_q[:min_idx], *popt),  # type: ignore
+            tau_fit_q,
+            tau_model.eval(q=tau_fit_q, **popt),
             c="tab:red",
             linestyle="--",
-            label=plot_labels["power_law_legend"].format(eta=eta),
+            label=plot_labels["power_law_legend"].format(eta=popt["eta"]),
         )
+        ax.fill_between(tau_fit_q, *uncertainty_band, color="tab:red", alpha=0.4)
 
         ax = decorate_axes(
             ax,
@@ -550,7 +548,7 @@ def analyse_single(
         fit_results.power_law = (popt, popt_err)
         store_data(fit_results, path=plots, name=f"fit-results-{binary_file_name}")
 
-        return popt, popt_err
+        return np.array(popt.values()), popt_err
 
     store_data(fit_results, path=plots, name=f"fit-results-{binary_file_name}")
 

@@ -40,9 +40,7 @@ exp_model.set_param_hint(
 exp_model.set_param_hint("beta", min=0.0, max=np.inf)
 
 
-def tau_moment(
-    tau: Union[float, np.ndarray], beta: Union[float, np.ndarray]
-) -> Union[float, np.ndarray]:
+def tau_moment(tau: np.ndarray, beta: np.ndarray) -> np.ndarray:
     """Calculate the first moment of the stretched exponential function."""
 
     return tau / beta * gamma(1 / beta)
@@ -69,8 +67,8 @@ def power_law(q: np.ndarray, a: float, eta: float) -> np.ndarray:
 
 
 tau_model = lm.Model(power_law)
-tau_model.set_param_hint("a", min=0, max=np.inf)
-tau_model.set_param_hint("eta", min=0, max=np.inf)
+tau_model.set_param_hint("a", min=0, max=np.inf, value=1.0)
+tau_model.set_param_hint("eta", min=0, max=np.inf, value=1.0)
 
 
 def model_generator(kind: str) -> lm.Model:
