@@ -191,12 +191,14 @@ def fit_isf(
         _description_
     """
     fit_params = {}
+    alt_kwargs = kwargs.copy()
+    alt_kwargs["weights"] = alt_weights
+
     for fu in fit_u:
         result = fit(model, ydata=ydata[:, fu], **kwargs)
-        if not result.success and alt_weights is not None:
+        if not result.success and (alt_weights is not None):
             print(f"    --> retrying fit for u={fu} with different weights.. ")
-            kwargs["weights"] = alt_weights
-            result = fit(model, ydata=ydata[:, fu], **kwargs)
+            result = fit(model, ydata=ydata[:, fu], **alt_kwargs)
 
         fit_params[fu] = extract_results(result)
 
@@ -371,8 +373,8 @@ def analyse_single(
     # fitting (stretched) exponential to all q values within prepared range
     fit_u = np.arange(*idx_range)
     fit_q = from_u_to_q(fit_u, metadata)
-    fit_params = {}
-    weights = np.sqrt(lags.max() / lags)
+    # weights = np.sqrt(lags.max() / lags)
+    weights = 1 / np.sqrt(lags)
 
     # fitting
     fit_params = fit_isf(
