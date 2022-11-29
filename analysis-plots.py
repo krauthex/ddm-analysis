@@ -548,7 +548,7 @@ def analyse_single(
         fit_results.power_law = (popt, popt_err)
         store_data(fit_results, path=plots, name=f"fit-results-{binary_file_name}")
 
-        return np.array(popt.values()), popt_err
+        return np.array(list(popt.values())), popt_err
 
     store_data(fit_results, path=plots, name=f"fit-results-{binary_file_name}")
 
