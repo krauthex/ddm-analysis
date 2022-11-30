@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import argparse
-from functools import partial
 from pathlib import Path
 from time import perf_counter
 from typing import Dict, List, Optional, Tuple, Union, Iterable, Any
@@ -13,10 +12,8 @@ import scipy.fft as scifft
 from dfmtoolbox._dfm_python import azimuthal_average, spatial_frequency_grid
 from dfmtoolbox.io import read_data, store_data
 from matplotlib.colors import TABLEAU_COLORS
-from scipy.optimize import curve_fit
 
 # external local modules
-from models import general_exp  # external script
 from models import (
     exp_model,
     extract_results,
