@@ -584,23 +584,12 @@ args = parser.parse_args()
 # default_p0 = [1e3, 1.0]  # amplitude, tau; offset is always very close to zero anyway
 stretched_exp = args.fit_stretched_exp
 exp_type = "stretched-exp" if stretched_exp else "exp"
-default_p0 = [1e3, 1.0, 1.0] if stretched_exp else [1e3, 1.0]
 
 # set initial guess for tau
 exp_model.set_param_hint("tau", value=1e3)
 
 # bounds2-tuple of array_like, optional
-if stretched_exp:
-    isf_fit_boundaries = (  # tau, amplitude, beta
-        [0, 0, 0],  # lower bounds for all parameters
-        [np.inf, 1, 10],  # upper bounds
-    )
-
-else:
-    isf_fit_boundaries = (  # tau, amplitude
-        [0, 0],  # lower bounds for all parameters
-        [np.inf, 1],  # upper bounds
-    )
+if not stretched_exp:
     exp_model.set_param_hint("beta", vary=False)  # set beta to be a constant
 
 fit_parameter_labels = [
