@@ -11,6 +11,7 @@ from csbdeep.utils import normalize
 # import matplotlib.pyplot as plt
 from dfmtoolbox.utils import tiff_to_numpy
 from stardist.models import StarDist2D
+from sympy import Point, Polygon
 
 # from stardist.plot import render_label
 
@@ -35,7 +36,10 @@ def images(path: Path) -> np.ndarray:
 
 
 def area(coord: np.ndarray) -> float:
-    pass
+    points = [Point(*pos) for pos in coord.T]
+    polygon = Polygon(*points)
+
+    return abs(float(polygon.area))
 
 
 def stats(details: Details) -> Any:
@@ -53,4 +57,13 @@ if __name__ == "__main__":
     model = StarDist2D.from_pretrained("2D_versatile_fluo")
     img = images(args.src)
     l, d = stardist_single(img[0], model)
-    print(d, d.keys())
+    coord = d["coord"]
+    print(len(coord))
+    N = 100
+    areas = np.zeros(N)
+    for i, verts in enumerate(coord[:N]):
+        print("calculating polygon: ", i)
+        areas[i] = area(verts)
+
+    print(f"Average area: {areas.mean()} \pm {areas.std()/np.sqrt(N)}")
+    # keys: coord, points, prob
