@@ -5,10 +5,13 @@ import argparse
 from multiprocessing import Pool
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Tuple, Union, Optional
 
+import matplotlib.pyplot as plt
 import numpy as np
+import scipy.fft as scifft
 from csbdeep.utils import normalize
+from dfmtoolbox._dfm_python import azimuthal_average
 
 # import matplotlib.pyplot as plt
 from dfmtoolbox.utils import tiff_to_numpy
@@ -78,6 +81,23 @@ def stats(details: Details, *, cpus: int = 1) -> Stats:
     return stat
 
 
+def structure_factor_single(
+    points: np.ndarray,
+    shape: Tuple[int, int],
+    *,
+    workers: int = 2,
+    spatial_freqs: Optional[np.ndarray] = None,
+) -> np.ndarray:
+
+    sf = np.zeros(shape)
+    y, x = points.T  # points is expected to be `details["points"]`
+    norm = len(y)  # number of points
+    sf[y, x] = 1
+    fft2 = scifft.fftshift(scifft.fft2(sf, workers=workers))
+
+    return azimuthal_average(np.abs(fft2) ** 2, dist=spatial_freqs) / norm
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("src", help="The source TIFF file.")
 parser.add_argument(
@@ -97,6 +117,11 @@ if __name__ == "__main__":
     l, d = stardist_single(img[0], model)
     stardist_time = perf_counter() - stardist_time
     print(f":: Stardist took {stardist_time:.2f}s")
+
+    print(":: structure factor")
+    sf = structure_factor_single(d["points"], shape=img[0].shape, workers=args.cpus)
+    plt.scatter(range(len(sf) - 1), sf[1:], s=3)
+    plt.show()
 
     results = stats(d, cpus=args.cpus)
     area = results["area"]
