@@ -7,7 +7,6 @@ import numpy as np
 
 from dfmtoolbox._dfm_python import (
     reconstruct_full_spectrum,
-    spatial_frequency_grid,
     azimuthal_average,
 )
 
@@ -92,3 +91,29 @@ def from_u_to_q(u: np.ndarray, pars: Dict[str, Any]) -> np.ndarray:
     q_min = 2 * np.pi * u_min
 
     return u * q_min
+
+
+def chunkify(data: np.ndarray, chunksize: int, overlap: int = 0) -> List[np.ndarray]:
+    """Takes a dataset and chunks it into smaller portions of size `chunksize`, with a given `overlap` with the previous chunk.
+
+    The last chunk may not be of the right size. The chunking will happen along the __first__ axis.
+    """
+    size = len(data)
+    nchunks = size // chunksize
+    if nchunks == 0:  # nothing to do here
+        return [data]
+
+    left, right, diff = 0, chunksize, chunksize - overlap
+    chunks = []
+
+    # main chunks
+    while right < size:
+        chunks.append(data[left:right])
+        left += diff
+        right += diff
+
+    # rest chunk if any
+    if len(data[left:]) > 0:
+        chunks.append(data[left:])
+
+    return chunks

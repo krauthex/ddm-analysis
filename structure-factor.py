@@ -6,7 +6,7 @@ from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable, Dict, Tuple, Union, Optional, List, Sequence
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,10 +14,13 @@ import scipy.fft as scifft
 from csbdeep.utils import normalize
 from dfmtoolbox._dfm_python import azimuthal_average, spatial_frequency_grid
 
-# import matplotlib.pyplot as plt
+# from dfmtoolbox.io import store_data
 from dfmtoolbox.utils import tiff_to_numpy
 from stardist.models import StarDist2D
 from sympy import Point, Polygon
+
+from plotting import decorate_axes, finalize_and_save
+from utils import chunkify, from_u_to_q
 
 # from stardist.plot import render_label
 
@@ -94,6 +97,8 @@ def structure_factor_single(
     y, x = points.T  # points is expected to be `details["points"]`
     norm = len(y)  # number of points
     sf[y, x] = 1
+
+    # doing the fft2
     fft2 = scifft.fftshift(scifft.fft2(sf, workers=workers))
 
     return azimuthal_average(np.abs(fft2) ** 2, dist=spatial_freqs) / norm
@@ -104,7 +109,7 @@ def structure_factor(
     *,
     model: StarDist2D,
     cpus: int = 1,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, np.ndarray]:
     stardist_fixed_model = partial(stardist_single, model=model)
     shape = images[0].shape
     full_sf = []
@@ -123,35 +128,50 @@ def structure_factor(
             )
         )
 
-    sf = np.array(full_sf).mean(axis=0)
+    sf = np.array(full_sf)
 
-    return sf
+    return sf.mean(axis=0), sf.std(axis=0)
 
 
-def chunkify(data: np.ndarray, chunksize: int, overlap: int = 0) -> List[np.ndarray]:
-    """Takes a dataset and chunks it into smaller portions of size `chunksize`, with a given `overlap` with the previous chunk.
+def plot_sf(
+    sf: np.ndarray,
+    pars: Dict[str, Any],
+    title: str,
+    sf_std: Optional[np.ndarray] = None,
+    figname: Optional[str] = None,
+    figsize: Tuple[int, int] = (9, 6),
+) -> None:
 
-    The last chunk may not be of the right size. The chunking will happen along the __first__ axis.
-    """
-    size = len(data)
-    nchunks = size // chunksize
-    if nchunks == 0:  # nothing to do here
-        return [data]
+    # square empty marker
+    # marker = {"marker": "o", "facecolor": "none", "edgecolor": "k", "s": 5}
+    lines = {"linestyle": "-", "color": "k"}
 
-    left, right, diff = 0, chunksize, chunksize - overlap
-    chunks = []
+    # setup data
+    sf = sf[1:]  # ignore q=0 value
+    u = np.arange(1, len(sf) + 1)
+    q = from_u_to_q(u, pars)
 
-    # main chunks
-    while right < size:
-        chunks.append(data[left:right])
-        left += diff
-        right += diff
+    fig, ax = plt.subplots(figsize=figsize)
 
-    # rest chunk if any
-    if len(data[left:]) > 0:
-        chunks.append(data[left:])
+    ax.plot(q, sf, label=r"average $S(q)$", **lines)
+    # ax.scatter(q, sf, **marker)
+    if sf_std is not None:
+        sf_std = sf_std[1:]
+        ax.fill_between(q, sf - sf_std, sf + sf_std, label=r"$\sigma [S](q)$")
 
-    return chunks
+    ax = decorate_axes(
+        ax,
+        xlabel="Wave vector $q$",
+        ylabel="Static structure factor $S(q)$",
+        title=title,
+        yscale="linear",
+        xscale="linear",
+        ylim=(0.0, 1.6),
+    )
+
+    if figname is None:
+        figname = title.replace(" ", "_")
+    finalize_and_save(fig, Path(figname))
 
 
 parser = argparse.ArgumentParser()
@@ -173,6 +193,16 @@ parser.add_argument("--overlap", type=int, default=0, help="Overlap of chunks.")
 args = parser.parse_args()
 overlap, chunksize = args.overlap, args.chunksize
 
+metadata = {
+    "fps": 1 / 60,  # 1 frame per minute
+    "magnification": 1,  # the magnification is already accounted for in the given voxel size
+    "pixel_size": 1.29,
+    "pixel_size_unit": "µm",
+    "image_size": 512,  # always assume square images; see preparation below
+    "chunksize": chunksize,
+    "overlap": overlap,
+    "fraction_total_lags": 0.6,  # the fraction of total lags to use
+}
 
 if __name__ == "__main__":
     # timing
@@ -192,7 +222,7 @@ if __name__ == "__main__":
         print(f":: Chunksize set to {chunksize}")
         chunks = chunkify(np.arange(length), chunksize=chunksize, overlap=overlap)
 
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks):
         data = imgs[chunk]  # select images based on indices
         if args.stats:
             pass
@@ -202,15 +232,23 @@ if __name__ == "__main__":
 
             # l, d = stardist_single(img[0], model)
             print(":: structure factor")
-            sf = structure_factor(data, model=model, cpus=args.cpus)
+            N = len(data)
+            sf, sf_std = structure_factor(data, model=model, cpus=args.cpus)
 
             # sf = structure_factor_single(
             #     d["points"], shape=img[0].shape, workers=args.cpus
             # )
             sf_time = perf_counter() - sf_time
-            plt.scatter(range(len(sf) - 1), sf[1:], s=3)
-            plt.title(f"Average structure function for {chunksize} images")
-            plt.show()
+            plot_sf(
+                sf,
+                metadata,
+                sf_std=sf_std,
+                title=f"chunk-{i:02d} | avg. structure factor | chunksize={chunksize}",
+                figname=f"plots/{i:02d}-structure_factor",
+            )
+            # plt.scatter(range(len(sf) - 1), sf[1:], s=3)
+            # plt.title(f"Average structure function for {chunksize} images")
+            # plt.show()
 
             # results = stats(d, cpus=args.cpus)
             # area = results["area"]
