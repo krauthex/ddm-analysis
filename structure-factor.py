@@ -14,20 +14,14 @@ import scipy.fft as scifft
 from csbdeep.utils import normalize
 from dfmtoolbox._dfm_python import azimuthal_average, spatial_frequency_grid
 
-# from dfmtoolbox.io import store_data
+from dfmtoolbox.io import store_data
 from dfmtoolbox.utils import tiff_to_numpy
+from shapely import Polygon
 from stardist.models import StarDist2D
-from sympy import Point, Polygon
 
 from plotting import decorate_axes, finalize_and_save
-from utils import chunkify, from_u_to_q
+from utils import chunkify, from_u_to_q, StructureFactor, ImageCellStats
 
-# from stardist.plot import render_label
-
-
-# stardist setup
-# prints a list of available models
-# StarDist2D.from_pretrained()
 
 Details = Dict[str, np.ndarray]
 Stats = Dict[str, Union[int, Dict[str, float]]]
@@ -59,10 +53,9 @@ def multicore_dispatch(
 
 
 def single_cell_stat(coord: np.ndarray) -> Tuple[float, float]:
-    points = [Point(*pos) for pos in coord.T]
-    polygon = Polygon(*points)
+    polygon = Polygon(coord.T)
 
-    return abs(float(polygon.area)), abs(float(polygon.perimeter))
+    return abs(polygon.area), abs(polygon.length)
 
 
 def stats(details: Details, *, cpus: int = 1) -> Stats:
@@ -110,6 +103,7 @@ def structure_factor(
     model: StarDist2D,
     cpus: int = 1,
 ) -> Tuple[np.ndarray, np.ndarray]:
+
     stardist_fixed_model = partial(stardist_single, model=model)
     shape = images[0].shape
     full_sf = []
@@ -117,9 +111,6 @@ def structure_factor(
     ky = scifft.fftfreq(shape[-2])
     spatial_freq = spatial_frequency_grid(kx, ky)
 
-    # for i, result in enumerate(
-    #     multicore_dispatch(stardist_fixed_model, images, cpus=cpus)
-    # ):
     for im in images:
         _, details = stardist_fixed_model(im)
         full_sf.append(
@@ -176,6 +167,7 @@ def plot_sf(
 
 parser = argparse.ArgumentParser()
 parser.add_argument("src", help="The source TIFF file.")
+parser.add_argument("--range", help="Comma separated image index (!) range, e.g. 1,10")
 parser.add_argument(
     "--stats", action="store_true", help="Compute the stats for each image."
 )
@@ -212,22 +204,43 @@ if __name__ == "__main__":
     model = StarDist2D.from_pretrained("2D_versatile_fluo")
 
     # read images
-    imgs = images(args.src)
-
-    # setup chunks
-    length = len(imgs)
-    if chunksize == 0:
-        chunks = [np.arange(length)]
+    if args.range is not None:
+        image_range: Optional[range] = range(*[int(i) for i in args.range.split(",")])
     else:
-        print(f":: Chunksize set to {chunksize}")
-        chunks = chunkify(np.arange(length), chunksize=chunksize, overlap=overlap)
+        image_range = None
 
-    for i, chunk in enumerate(chunks):
-        data = imgs[chunk]  # select images based on indices
-        if args.stats:
-            pass
+    imgs = images(args.src, seq=image_range)
+    nimages = len(imgs)
 
+    if args.stats:
+        print(":: Only performing cell statistics")
+        cellstats = ImageCellStats(args.src, np.array(range(nimages)), [])
+
+        for i, data in enumerate(imgs):
+            img_time = perf_counter()
+            print(f"::: working on image {i+1}/{nimages}")
+
+            _, details = stardist_single(data, model)
+            stat = stats(details, cpus=args.cpus)
+            cellstats.stats.append(stat)
+
+            print(f"    --> took {perf_counter() - img_time:.1f} s")
+
+        print(":: Storing stats data ..")
+        store_data(cellstats, path=Path("plots/"), name="cellstats.pkl")
+
+    else:
+        # setup chunks
+        length = len(imgs)
+        if chunksize == 0:
+            chunks = [np.arange(length)]
         else:
+            print(f":: Chunksize set to {chunksize}")
+            chunks = chunkify(np.arange(length), chunksize=chunksize, overlap=overlap)
+
+        for i, chunk in enumerate(chunks):
+            data = imgs[chunk]  # select images based on indices
+
             sf_time = perf_counter()
 
             # l, d = stardist_single(img[0], model)
@@ -260,5 +273,5 @@ if __name__ == "__main__":
             #     f"Average perimeter: {perimeter['mean']:.2f} \pm {perimeter['std']/np.sqrt(n):.2f}"
             # )
 
-            print(f":: Overall runtime: {perf_counter()-start:.2f}s")
-            # keys: coord, points, prob
+    print(f":: Overall runtime: {perf_counter()-start:.2f}s")
+    # keys: coord, points, prob

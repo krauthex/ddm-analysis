@@ -35,6 +35,26 @@ class FitResults:
     notes: Optional[str] = None
 
 
+@dataclass
+class StructureFactor:
+    """Class for storing structure factor results."""
+
+    sf: np.ndarray
+    q: np.ndarray  # wavevectors
+    sf_std: Optional[np.ndarray] = None
+    size: Optional[int] = None  # sample size
+    notes: Optional[str] = None
+
+
+@dataclass
+class ImageCellStats:
+    """Class for storing statistics about cells in images."""
+
+    data_source: Path  # folder or file
+    images: np.ndarray  # image indices
+    stats: List[Dict[str, Any]]  # list of stats dictionary on a per-image basis
+
+
 def static_estimate_A_B(
     rfft2_sqmod: np.ndarray, shape: Optional[Tuple[int, ...]]
 ) -> Tuple[np.ndarray, float]:
