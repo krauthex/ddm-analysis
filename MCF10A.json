@@ -1,0 +1,11 @@
+{
+  "fps": "1 / 60", 
+  "magnification": 1,
+  "pixel_size": 3.224,
+  "pixel_size_unit": "µm",
+  "dim_x": 672,
+  "dim_y": 512,
+  "chunksize": 200,
+  "overlap": 100,
+  "fraction_total_lags": 0.6
+}

@@ -2,10 +2,11 @@
 """Perform DDM analysis using dfmtoolbox on cell movies and store the results in a binary format."""
 
 import argparse
+import json
 from itertools import islice
 from pathlib import Path
 from time import perf_counter
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Tuple, Dict, Any, Optional
 
 import numpy as np
 import tifffile
@@ -14,6 +15,18 @@ from dfmtoolbox.io import store_data
 from dfmtoolbox.utils import tiff_to_numpy
 
 from utils import AnalysisBlob
+
+
+def read_metadata(path: str) -> Dict[str, Any]:
+    with open(path) as jsonfile:
+        metadata = json.load(jsonfile)
+
+    # sanity checks
+    if isinstance(metadata["fps"], str):
+        fps = metadata["fps"]
+        metadata["fps"] = eval(fps)
+
+    return metadata
 
 
 def get_fluorescence_tiff_paths(folder: Path) -> Iterator[Path]:
@@ -81,13 +94,15 @@ def chunkify(data: np.ndarray, chunksize: int, overlap: int = 0) -> List[np.ndar
     return chunks
 
 
-def process_single_tiff(src: Path) -> None:
+def process_single_tiff(src: Path, input_slice: Optional[slice] = None) -> None:
     """Process a single tiff file.
 
     Parameters
     ----------
     src : Path
         The path to the tiff file.
+    input_slice : Optional[slice]
+        The slice object to be applied to input data, by default None.
     """
 
     process_single_time = perf_counter()
@@ -105,20 +120,17 @@ def process_single_tiff(src: Path) -> None:
     # chunking setup
     length, y, x = get_dataset_dims(src)
     tiff_indices = np.arange(length)
+    if input_slice is not None:
+        tiff_indices = tiff_indices[input_slice]
+        print(
+            f":: info: using input slicing; the following indices are used: {tiff_indices}"
+        )
 
     for i, chunk in enumerate(chunkify(tiff_indices, chunksize, overlap)):
         chunk_calc_time = perf_counter()
         print(f":: [chunk={i}] Processing image range [{chunk[0]}-{chunk[-1]}]")
 
         data = tiff_to_numpy(src, seq=chunk)
-        """
-        if y != x:
-            square_dim = min(y, x)
-            print(
-                f"::: dimensions not square, cropping to {square_dim}x{square_dim}..."
-            )
-            data = data[:, :square_dim, :square_dim]
-        """
         print("::: Performing analysis now ...")
         rfft2_sqmod, azimuthal_avg, dqt = run(data, lags, keep_full_structure=True)
         if rfft2_sqmod.dtype != np.float64:
@@ -149,26 +161,41 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "src", metavar="SRC", nargs="+", help="Location of TIFF file(s) to be processed."
 )
+parser.add_argument("--metadata", help="path to metadata config file in json format.")
+parser.add_argument(
+    "--range",
+    help="The comma-separated arguments used for range in Python. To use all images starting from the e.g. 30th (index) image use '30,None'.",
+)
 
 args = parser.parse_args()
 
-chunksize = 200
-overlap = 100
-lag_pct = 0.6
+
+input_slice = eval(f"slice({args.range})") if args.range is not None else None
+
+if args.metadata is not None:
+    metadata = read_metadata(args.metadata)
+    chunksize = metadata["chunksize"]
+    overlap = metadata["overlap"]
+    lag_pct = metadata["fraction_total_lags"]
+
+else:
+    chunksize = 200
+    overlap = 100
+    lag_pct = 0.6
+    metadata = {
+        "fps": 1 / 60,  # 1 frame per minute
+        "magnification": 1,  # the magnification is already accounted for in the given voxel size
+        "pixel_size": 1.29,
+        "pixel_size_unit": "µm",
+        "image_size": 512,  # always assume square images; see preparation below
+        "chunksize": chunksize,
+        "overlap": overlap,
+        "fraction_total_lags": lag_pct,  # the fraction of total lags to use
+    }
+
 lags = np.arange(1, int(lag_pct * chunksize))
 
 notes_template = "chunk: {chunk}; normalized: {normalized}; windowed: {windowed}"
-
-metadata = {
-    "fps": 1 / 60,  # 1 frame per minute
-    "magnification": 1,  # the magnification is already accounted for in the given voxel size
-    "pixel_size": 1.29,
-    "pixel_size_unit": "µm",
-    "image_size": 512,  # always assume square images; see preparation below
-    "chunksize": chunksize,
-    "overlap": overlap,
-    "fraction_total_lags": lag_pct,  # the fraction of total lags to use
-}
 
 
 if __name__ == "__main__":
@@ -183,7 +210,7 @@ if __name__ == "__main__":
         print(f":: --> {tiffpath.name}")
 
     for tiff in tiff_paths:
-        process_single_tiff(tiff)
+        process_single_tiff(tiff, input_slice)
 
     overall_time = perf_counter() - total_time_start
     print(
