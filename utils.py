@@ -105,7 +105,10 @@ def from_u_to_q(u: np.ndarray, pars: Dict[str, Any]) -> np.ndarray:
         )
 
     if "image_size" not in pars.keys():
-        raise RuntimeError("[ERR] Supplied parameters don't contain image size.")
+        if "dim_x" in pars.keys() and "dim_y" in pars.keys():
+            pars["image_size"] = max(pars["dim_x"], pars["dim_y"])
+        else:
+            raise RuntimeError("[ERR] Supplied parameters don't contain image size.")
 
     u_min = 1 / (pars["image_size"] * pars["pixel_size"] / pars["magnification"])
     q_min = 2 * np.pi * u_min
