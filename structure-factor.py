@@ -6,7 +6,7 @@ from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -102,7 +102,8 @@ def structure_factor(
     *,
     model: StarDist2D,
     cpus: int = 1,
-) -> Tuple[np.ndarray, np.ndarray]:
+    cellstats: bool = True,
+) -> Tuple[np.ndarray, np.ndarray, List[Any]]:
 
     stardist_fixed_model = partial(stardist_single, model=model)
     shape = images[0].shape
@@ -111,6 +112,8 @@ def structure_factor(
     ky = scifft.fftfreq(shape[-2])
     spatial_freq = spatial_frequency_grid(kx, ky)
 
+    statistics = []
+
     for im in images:
         _, details = stardist_fixed_model(im)
         full_sf.append(
@@ -118,10 +121,12 @@ def structure_factor(
                 details["points"], shape=shape, workers=cpus, spatial_freqs=spatial_freq
             )
         )
+        if cellstats:
+            statistics.append(stats(details, cpus=cpus))
 
     sf = np.array(full_sf)
 
-    return sf.mean(axis=0), sf.std(axis=0)
+    return sf.mean(axis=0), sf.std(axis=0), statistics
 
 
 def plot_sf(
@@ -169,7 +174,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("src", help="The source TIFF file.")
 parser.add_argument("--range", help="Comma separated image index (!) range, e.g. 1,10")
 parser.add_argument(
-    "--stats", action="store_true", help="Compute the stats for each image."
+    "--stats-only", action="store_true", help="Compute only the stats for each image."
 )
 parser.add_argument(
     "--cpus", type=int, default=1, help="Number of CPUs to use for polygon computation."
@@ -212,7 +217,7 @@ if __name__ == "__main__":
     imgs = images(args.src, seq=image_range)
     nimages = len(imgs)
 
-    if args.stats:
+    if args.stats_only:
         print(":: Only performing cell statistics")
         cellstats = ImageCellStats(args.src, np.array(range(nimages)), [])
 
@@ -243,15 +248,14 @@ if __name__ == "__main__":
 
             sf_time = perf_counter()
 
-            # l, d = stardist_single(img[0], model)
             print(":: structure factor")
             N = len(data)
-            sf, sf_std = structure_factor(data, model=model, cpus=args.cpus)
+            sf, sf_std, statistics = structure_factor(
+                data, model=model, cpus=args.cpus, cellstats=True
+            )
 
-            # sf = structure_factor_single(
-            #     d["points"], shape=img[0].shape, workers=args.cpus
-            # )
             sf_time = perf_counter() - sf_time
+            print(f"   --> structure factor for chunk {i} took {sf_time:.1f} s")
             plot_sf(
                 sf,
                 metadata,
@@ -259,19 +263,22 @@ if __name__ == "__main__":
                 title=f"chunk-{i:02d} | avg. structure factor | chunksize={chunksize}",
                 figname=f"plots/{i:02d}-structure_factor",
             )
-            # plt.scatter(range(len(sf) - 1), sf[1:], s=3)
-            # plt.title(f"Average structure function for {chunksize} images")
-            # plt.show()
 
-            # results = stats(d, cpus=args.cpus)
-            # area = results["area"]
-            # perimeter = results["perimeter"]
-            # n = results["number"]
+            print(":: Storing data now ...")
+            if len(statistics) > 0:
+                store_data(
+                    ImageCellStats(args.src, chunk, statistics),
+                    path=Path("plots/"),
+                    name=f"{i:02d}-cellstats.pkl",
+                )
 
-            # print(f"Average area: {area['mean']:.2f} \pm {area['std']/np.sqrt(n):.2f}")
-            # print(
-            #     f"Average perimeter: {perimeter['mean']:.2f} \pm {perimeter['std']/np.sqrt(n):.2f}"
-            # )
+            u = np.arange(len(sf))
+            q = from_u_to_q(u, metadata)
+            store_data(
+                StructureFactor(sf, q, sf_std=sf_std, size=N, notes=f"chunk {i:02d}"),
+                path=Path("plots/"),
+                name=f"{i:02d}-structure-factor.pkl",
+            )
 
     print(f":: Overall runtime: {perf_counter()-start:.2f}s")
     # keys: coord, points, prob
