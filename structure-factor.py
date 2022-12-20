@@ -6,25 +6,24 @@ from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union, List
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fft as scifft
 from csbdeep.utils import normalize
+from cv2 import fitEllipse
 from dfmtoolbox._dfm_python import azimuthal_average, spatial_frequency_grid
-
 from dfmtoolbox.io import store_data
 from dfmtoolbox.utils import tiff_to_numpy
 from shapely import Polygon
 from stardist.models import StarDist2D
 
 from plotting import decorate_axes, finalize_and_save
-from utils import chunkify, from_u_to_q, StructureFactor, ImageCellStats
-
+from utils import ImageCellStats, StructureFactor, chunkify, from_u_to_q
 
 Details = Dict[str, np.ndarray]
-Stats = Dict[str, Union[int, Dict[str, float]]]
+Stats = Dict[str, Any]
 
 
 def stardist_single(image: np.ndarray, model: StarDist2D, norm: bool = True) -> Any:
@@ -52,10 +51,20 @@ def multicore_dispatch(
     return results
 
 
-def single_cell_stat(coord: np.ndarray) -> Tuple[float, float]:
+def single_cell_stat(coord: np.ndarray) -> Tuple[float, float, float]:
     polygon = Polygon(coord.T)
 
-    return abs(polygon.area), abs(polygon.length)
+    return abs(polygon.area), abs(polygon.length), aspect_ratio(polygon)
+
+
+def aspect_ratio(poly: Polygon) -> float:
+    """Fit an ellipse and return its aspect ratio."""
+    coords = np.array(poly.boundary.coords, dtype=np.float32)
+    *_, axes, _ = fitEllipse(
+        coords
+    )  # other return values are x,y center and orientation
+
+    return max(axes) / min(axes)
 
 
 def stats(details: Details, *, cpus: int = 1) -> Stats:
@@ -64,16 +73,19 @@ def stats(details: Details, *, cpus: int = 1) -> Stats:
     cell_number = len(coord)
     areas = np.zeros(cell_number)
     perimeters = np.zeros(cell_number)
+    aspect_ratios = np.zeros(cell_number)
 
     for i, result in enumerate(multicore_dispatch(single_cell_stat, coord, cpus=cpus)):
-        area, perim = result
+        area, perim, ar = result
         areas[i] = area
         perimeters[i] = perim
+        aspect_ratios[i] = ar
 
     stat = {
         "number": cell_number,
         "area": {"mean": areas.mean(), "std": areas.std()},
         "perimeter": {"mean": perimeters.mean(), "std": perimeters.std()},
+        "aspect_ratio": {"mean": aspect_ratios.mean(), "std": aspect_ratios.std()},
     }
     return stat
 
@@ -172,6 +184,7 @@ def plot_sf(
 
 parser = argparse.ArgumentParser()
 parser.add_argument("src", help="The source TIFF file.")
+parser.add_argument("--dest", help="The destination folder to store data in.")
 parser.add_argument("--range", help="Comma separated image index (!) range, e.g. 1,10")
 parser.add_argument(
     "--stats-only", action="store_true", help="Compute only the stats for each image."
@@ -217,6 +230,10 @@ if __name__ == "__main__":
     imgs = images(args.src, seq=image_range)
     nimages = len(imgs)
 
+    # setup store path
+    store_path = Path(args.dest) if args.dest is not None else Path("plots/")
+
+    # full analysis or just stats
     if args.stats_only:
         print(":: Only performing cell statistics")
         cellstats = ImageCellStats(args.src, np.array(range(nimages)), [])
@@ -232,7 +249,7 @@ if __name__ == "__main__":
             print(f"    --> took {perf_counter() - img_time:.1f} s")
 
         print(":: Storing stats data ..")
-        store_data(cellstats, path=Path("plots/"), name="cellstats.pkl")
+        store_data(cellstats, path=store_path, name="cellstats.pkl")
 
     else:
         # setup chunks
@@ -268,7 +285,7 @@ if __name__ == "__main__":
             if len(statistics) > 0:
                 store_data(
                     ImageCellStats(args.src, chunk, statistics),
-                    path=Path("plots/"),
+                    path=store_path,
                     name=f"{i:02d}-cellstats.pkl",
                 )
 
@@ -276,7 +293,7 @@ if __name__ == "__main__":
             q = from_u_to_q(u, metadata)
             store_data(
                 StructureFactor(sf, q, sf_std=sf_std, size=N, notes=f"chunk {i:02d}"),
-                path=Path("plots/"),
+                path=store_path,
                 name=f"{i:02d}-structure-factor.pkl",
             )
 
