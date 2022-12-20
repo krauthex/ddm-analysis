@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import json
 import numpy as np
 
 from dfmtoolbox._dfm_python import (
@@ -140,3 +141,27 @@ def chunkify(data: np.ndarray, chunksize: int, overlap: int = 0) -> List[np.ndar
         chunks.append(data[left:])
 
     return chunks
+
+
+def read_metadata(path: str) -> Dict[str, Any]:
+    """Read the metadata json file and perform minimal parsing.
+
+    Parameters
+    ----------
+    path : str
+        The path to the metadata json file.
+
+    Returns
+    -------
+    Dict[str, Any]
+        A metadata dictionary.
+    """
+    with open(path) as jsonfile:
+        metadata = json.load(jsonfile)
+
+    # sanity checks
+    if isinstance(metadata["fps"], str):
+        fps = metadata["fps"]
+        metadata["fps"] = eval(fps)
+
+    return metadata

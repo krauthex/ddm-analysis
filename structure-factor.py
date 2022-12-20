@@ -20,7 +20,7 @@ from shapely import Polygon
 from stardist.models import StarDist2D
 
 from plotting import decorate_axes, finalize_and_save
-from utils import ImageCellStats, StructureFactor, chunkify, from_u_to_q
+from utils import ImageCellStats, StructureFactor, chunkify, from_u_to_q, read_metadata
 
 Details = Dict[str, np.ndarray]
 Stats = Dict[str, Any]
@@ -199,20 +199,29 @@ parser.add_argument(
     help="Splits the analysis and averaging int o slices of this chunksize.",
 )
 parser.add_argument("--overlap", type=int, default=0, help="Overlap of chunks.")
+parser.add_argument("--metadata", help="path to metadata config file in json format.")
 
 args = parser.parse_args()
 overlap, chunksize = args.overlap, args.chunksize
 
-metadata = {
-    "fps": 1 / 60,  # 1 frame per minute
-    "magnification": 1,  # the magnification is already accounted for in the given voxel size
-    "pixel_size": 1.29,
-    "pixel_size_unit": "µm",
-    "image_size": 512,  # always assume square images; see preparation below
-    "chunksize": chunksize,
-    "overlap": overlap,
-    "fraction_total_lags": 0.6,  # the fraction of total lags to use
-}
+if args.metadata is not None:
+    metadata = read_metadata(args.metadata)
+    chunksize = metadata["chunksize"] if "chunksize" in metadata.keys() else chunksize
+    overlap = metadata["overlap"] if "overlap" in metadata.keys() else overlap
+
+else:
+    chunksize = 200
+    overlap = 100
+    metadata = {
+        "fps": 1 / 60,  # 1 frame per minute
+        "magnification": 1,  # the magnification is already accounted for in the given voxel size
+        "pixel_size": 1.29,
+        "pixel_size_unit": "µm",
+        "image_size": 672,
+        "chunksize": chunksize,
+        "overlap": overlap,
+    }
+
 
 if __name__ == "__main__":
     # timing

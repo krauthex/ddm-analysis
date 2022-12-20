@@ -2,7 +2,6 @@
 """Perform DDM analysis using dfmtoolbox on cell movies and store the results in a binary format."""
 
 import argparse
-import json
 from itertools import islice
 from pathlib import Path
 from time import perf_counter
@@ -14,19 +13,7 @@ from dfmtoolbox._dfm_python import run
 from dfmtoolbox.io import store_data
 from dfmtoolbox.utils import tiff_to_numpy
 
-from utils import AnalysisBlob
-
-
-def read_metadata(path: str) -> Dict[str, Any]:
-    with open(path) as jsonfile:
-        metadata = json.load(jsonfile)
-
-    # sanity checks
-    if isinstance(metadata["fps"], str):
-        fps = metadata["fps"]
-        metadata["fps"] = eval(fps)
-
-    return metadata
+from utils import AnalysisBlob, read_metadata
 
 
 def get_fluorescence_tiff_paths(folder: Path) -> Iterator[Path]:
@@ -94,13 +81,17 @@ def chunkify(data: np.ndarray, chunksize: int, overlap: int = 0) -> List[np.ndar
     return chunks
 
 
-def process_single_tiff(src: Path, input_slice: Optional[slice] = None) -> None:
+def process_single_tiff(
+    src: Path, lags: np.ndarray, input_slice: Optional[slice] = None
+) -> None:
     """Process a single tiff file.
 
     Parameters
     ----------
     src : Path
         The path to the tiff file.
+    lags: np.ndarray
+        The lag times for the analysis.
     input_slice : Optional[slice]
         The slice object to be applied to input data, by default None.
     """
@@ -132,6 +123,12 @@ def process_single_tiff(src: Path, input_slice: Optional[slice] = None) -> None:
 
         data = tiff_to_numpy(src, seq=chunk)
         print("::: Performing analysis now ...")
+        if len(data) <= lags.max():
+            print(
+                "    --> chunk is smaller than regular chunksize, reducing lag times ..."
+            )
+            lags = np.arange(1, int(lag_pct * len(data)))
+
         rfft2_sqmod, azimuthal_avg, dqt = run(data, lags, keep_full_structure=True)
         if rfft2_sqmod.dtype != np.float64:
             rfft2_sqmod = rfft2_sqmod.astype(np.float64)
@@ -210,7 +207,7 @@ if __name__ == "__main__":
         print(f":: --> {tiffpath.name}")
 
     for tiff in tiff_paths:
-        process_single_tiff(tiff, input_slice)
+        process_single_tiff(tiff, lags, input_slice)
 
     overall_time = perf_counter() - total_time_start
     print(
