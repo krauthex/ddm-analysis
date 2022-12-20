@@ -1,15 +1,11 @@
 """Helper functions/computations."""
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import json
 import numpy as np
-
-from dfmtoolbox._dfm_python import (
-    reconstruct_full_spectrum,
-    azimuthal_average,
-)
+from dfmtoolbox._dfm_python import azimuthal_average, reconstruct_full_spectrum
 
 
 @dataclass
