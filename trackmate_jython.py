@@ -31,14 +31,15 @@ filename = "B75B88VH_F00000004.tif"
 # imp = IJ.getImage("foo.tif");
 # imp = IJ.selectWindow("foo.tif");
 # original = IJ.openImage(day1 + filename)
-original = WindowManager.getCurrentImage()
+# original = WindowManager.getCurrentImage()
+original = WindowManager.getImage(filename)
 original.show()
 title = original.getShortTitle()
 
 imp = original.duplicate().crop("1-10")
-imp.setTitle("testimage");
+imp.setTitle("testimage")
 imp.show()
-
+# imp = original
 # cleanup
 # original.close()
 
@@ -86,7 +87,7 @@ filter1 = FeatureFilter('QUALITY', 30, True)
 # Configure tracker - We want to allow merges and fusions
 settings.trackerFactory = SparseLAPTrackerFactory()
 settings.trackerSettings = LAPUtils.getDefaultLAPSettingsMap() # almost good enough
-settings.trackerSettings['LINKING_MAX_DISTANCE'] = 5.0
+settings.trackerSettings['LINKING_MAX_DISTANCE'] = 3.0
 settings.trackerSettings['GAP_CLOSING_MAX_DISTANCE'] = 5.0
 settings.trackerSettings['MAX_FRAME_GAP'] = 3
 # settings.trackerSettings['ALLOW_TRACK_SPLITTING'] = True
@@ -119,10 +120,19 @@ ok = trackmate.checkInput()
 if not ok:
     sys.exit(str(trackmate.getErrorMessage()))
  
-ok = trackmate.process()
+# ok = trackmate.process()  # this does the whole process, detection + tracking
+ok = trackmate.execDetection()  # just basic detection
 if not ok:
     sys.exit(str(trackmate.getErrorMessage()))
- 
+
+# spot filtering    
+ok = trackmate.execInitialSpotFiltering()
+if not ok:
+    sys.exit(str(trackmate.getErrorMessage()))
+ 	
+ok = trackmate.execSpotFiltering(False)
+if not ok:
+    sys.exit(str(trackmate.getErrorMessage()))
  
 #----------------
 # Display results
@@ -155,7 +165,7 @@ logger.log(str(spots.firstKey()) + " " + str(spots.lastKey()))
 logger.log("saving data now ...")
 
 with open(day1 + title + ".csv", "w") as f:
-	f.write("spotID,x,y,z,t\n")
+	f.write("spotID,x,y,t\n")
 	for frame in range(nSlices):
 		for spot in spots.iterable(frame):
 			x = spot.getFeature("POSITION_X")
