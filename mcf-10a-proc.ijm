@@ -51,6 +51,13 @@ run("Command From Macro",
 	+ "process=[false]"
 );
 
+// select label image 
+var label_img_name = "labels-" + image_name
+selectWindow("Label Image");
+rename(label_img_name);
+run("8-bit");
+saveAs("Tiff", savepath + label_img_name);
+close(label_img_name)
 
 // open results as list and save it as a file
 roiManager("List");
