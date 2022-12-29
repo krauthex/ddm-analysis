@@ -5,6 +5,9 @@ var savepath = "/home/fkra/Desktop/"
 var image_name = "base.tif";
 var n2v_image_name = image_name + "-n2v"
 
+// setup
+setBatchMode("hide");
+
 // open image
 open(savepath + image_name);
 var img_title = File.nameWithoutExtension;
